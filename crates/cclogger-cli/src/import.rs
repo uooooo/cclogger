@@ -3338,6 +3338,62 @@ pub(crate) mod tests {
         ]
     }
 
+    /// The subagent's own thread in [`codex_subagent_dispatch`]'s pair -- distinct from
+    /// [`CODEX_CHILD_SESSION`]/[`CODEX_PARENT_SESSION`] above, which name a *fork*, a
+    /// different relation the cross-file pre-pass must be able to tell apart from a
+    /// dispatch.
+    const CODEX_SUBAGENT_THREAD: &str = "77777777-7777-4777-8777-777777777777";
+    /// The parent thread that dispatches [`CODEX_SUBAGENT_THREAD`] in
+    /// [`codex_subagent_dispatch`]'s pair.
+    const CODEX_DISPATCHER_THREAD: &str = "88888888-8888-4888-8888-888888888888";
+
+    /// A parent Codex rollout that submits one prompt of its own and then dispatches a
+    /// subagent to [`CODEX_SUBAGENT_THREAD`], and the child rollout that subagent
+    /// writes to its own file with a session start and one prompt of its own -- the
+    /// cross-file shape `codex_history::transform_user_message` reads through the
+    /// importer's pre-pass to stamp `data.origin`: `"human"` on the parent's prompt,
+    /// `"subagent"` on the child's. `(parent_lines, child_lines)`.
+    ///
+    /// The child's own session start and its own prompt take separate timestamps --
+    /// unlike the parent's, which share `parent_at` -- so a caller can place them close
+    /// enough to cluster on the agent clock without also collapsing to one instant,
+    /// which would cluster to zero seconds whether or not the prompt actually joined
+    /// the cluster and so could not tell the two cases apart.
+    ///
+    /// Shared with `report.rs`'s and `log.rs`'s test modules rather than copied into
+    /// them, for the same reason [`codex_forked_rollout`] is: the shape a subagent
+    /// dispatch takes is stated once, so neither module's fixture can drift from what
+    /// `codex_history` actually reads. See
+    /// `a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`
+    /// above, which this mirrors.
+    pub(crate) fn codex_subagent_dispatch(
+        cwd: &str,
+        parent_at: &str,
+        child_session_at: &str,
+        child_prompt_at: &str,
+    ) -> (Vec<String>, Vec<String>) {
+        let parent = vec![
+            codex_session_meta_with(
+                parent_at,
+                cwd,
+                CODEX_DISPATCHER_THREAD,
+                Some(CODEX_DISPATCHER_THREAD),
+            ),
+            codex_user_message(parent_at, "SYNTHETIC human prompt"),
+            codex_sub_agent_activity(parent_at, CODEX_SUBAGENT_THREAD, "reviewer"),
+        ];
+        let child = vec![
+            codex_session_meta_with(
+                child_session_at,
+                cwd,
+                CODEX_SUBAGENT_THREAD,
+                Some(CODEX_SUBAGENT_THREAD),
+            ),
+            codex_user_message(child_prompt_at, "SYNTHETIC subagent prompt"),
+        ];
+        (parent, child)
+    }
+
     /// The Claude Code counterpart of [`codex_bytes`], for the mixed-vendor test.
     fn claude_bytes(cwd: &str) -> String {
         format!(
