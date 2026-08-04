@@ -4839,15 +4839,25 @@ pub(crate) mod tests {
     /// the fact that a subagent's own thread id is *only* ever named in a different
     /// file's `sub_agent_activity` record, and [`Vendor::pre_scan`] builds and discards
     /// one snapshot's `Keystore` before the next snapshot is even read. A hand-built
-    /// `Keystore` cannot observe whether the importer, reading two real archived files
-    /// through the real per-locator loop, ever gets the fact from one into the other's.
-    /// So this test archives two files and asks the same production functions
-    /// [`run_import`] itself calls, fed nothing this test typed by hand -- only bytes
-    /// read back out of the same `Ledger` `run_import` just wrote to.
+    /// `Keystore` cannot observe whether the *real* pre-pass, reading real archived
+    /// bytes through the real `Ledger`, ever computes the right set at all.
     ///
-    /// (`codex_history::transform_user_message` is not asserted on directly: making it
-    /// *act* on this fact is a later task's job. What this task owns, and what this
-    /// test pins, is that the fact reaches the child locator's own `Keystore` at all.)
+    /// So this test archives two real files and calls the same production functions
+    /// [`run_import`] itself calls -- [`codex_subagent_thread_ids`] and
+    /// [`Vendor::pre_scan`] -- directly, fed nothing this test typed by hand, only
+    /// bytes read back out of the `Ledger` those two files were archived into. That
+    /// proves the pre-pass and the pre-scan are each individually correct, and
+    /// correct when composed by hand exactly as `run_import` composes them.
+    ///
+    /// **What it does not prove**: that `run_import`'s own per-locator loop performs
+    /// that composition -- i.e. that the wire from its pre-pass call site to its
+    /// `Vendor::pre_scan` call site is actually connected. Severing that wire inside
+    /// `run_import` leaves this test green, because nothing below re-enters
+    /// `run_import` to check it (see the comment on the `run_import` call below).
+    /// Closing that gap needs a ledger-visible signal this task does not yet produce
+    /// (`codex_history::transform_user_message` does not read this fact at all --
+    /// that is the next task's job); it is recorded there as a required assertion
+    /// through `run_import` on an actual observation's `data.origin`.
     #[test]
     fn a_subagent_rollout_is_recognised_from_its_parents_file() {
         // parent.jsonl says it spawned a subagent whose thread is "thr-child".
@@ -4890,8 +4900,19 @@ pub(crate) mod tests {
             &child_bytes,
             "2026-08-05T00:00:05Z",
         );
-        // The real importer, end to end -- so a regression that breaks the pipeline
-        // around the new pre-pass shows up here too, not only in the checks below.
+        // Called for its own sake -- it must not error against these two archived
+        // files -- but this does NOT exercise the wiring this task added.
+        // `run_import`'s own per-locator loop computes `subagent_threads` once and
+        // threads it into its own `Vendor::pre_scan` call; nothing below re-enters
+        // `run_import` to check that wire is intact, because the checks below call
+        // `codex_subagent_thread_ids` and `Vendor::Codex::pre_scan` directly rather
+        // than through it. Severing that wire inside `run_import` (e.g. passing an
+        // empty set instead of the one just computed) leaves every assertion below
+        // passing regardless. That gap cannot be closed here: nothing yet reads
+        // `codex_subagent_session` from a `Keystore`, so there is no ledger-visible
+        // signal a `run_import`-only test could assert on. It closes in the next
+        // task, whose own test asserts through `run_import` on an actual
+        // observation's `data.origin`.
         run_import(root.path(), false).expect("import");
 
         let ledger = Ledger::open(root.path()).expect("reopen ledger");
@@ -4944,6 +4965,68 @@ pub(crate) mod tests {
                 .resolve("codex_subagent_session", codex_history::FILE_SESSION)
                 .is_none(),
             "parent.jsonl named a subagent, but is not one itself"
+        );
+    }
+
+    #[test]
+    fn the_codex_pre_scans_thread_id_is_the_first_session_metas_not_a_re_announcement() {
+        // The same shape `a_re_announced_session_meta_with_a_fresh_id_is_still_one_codex_session`
+        // pins for `session` (`session_id`), pinned here for `thread_id` (`id`)
+        // instead: `session_meta` is re-announced up to 30 times per file with a
+        // fresh `id` each time (see `codex_session_id`'s doc comment), which is
+        // ordinary data, not an edge case. Under a last-wins bug, `thread_id` would
+        // hold the *stale* re-announced id, the match against a run-wide subagent
+        // set would miss, and a genuine subagent's prompts would stay on the human
+        // side -- the exact defect this task exists to remove.
+        let cwd = "/SYNTHETIC/work/repo";
+        let bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with("2026-08-05T00:00:00.000Z", cwd, "thr-real", Some("ses-1")),
+            // Re-announced with a fresh `id` -- and the same `session_id`, exactly as
+            // the real corpus does it.
+            codex_session_meta_with("2026-08-05T00:00:03.000Z", cwd, "thr-stale", Some("ses-1")),
+        );
+        let lines = complete_lines(&bytes, bytes.as_bytes());
+        // As if some other file's `sub_agent_activity` had named the *first* id.
+        let subagent_threads = std::collections::HashSet::from(["thr-real".to_string()]);
+
+        let (keystore, _) = Vendor::Codex.pre_scan(&lines, TEST_HOME, &subagent_threads);
+
+        assert!(
+            keystore
+                .resolve("codex_subagent_session", codex_history::FILE_SESSION)
+                .is_some(),
+            "the file's own thread id must be its *first* session_meta's \
+             (\"thr-real\"), not a later re-announcement (\"thr-stale\")"
+        );
+    }
+
+    #[test]
+    fn codex_subagent_thread_ids_ignores_an_empty_agent_thread_id() {
+        // An empty thread id names nothing -- collecting it would collapse every
+        // file that ever resolves an empty vendor id onto one shared, meaningless
+        // key.
+        let root = TempRoot::new("codex-subagent-empty-thread-id");
+        let bytes = format!(
+            "{}\n",
+            codex_sub_agent_activity("2026-08-05T00:00:01.000Z", "", "reviewer"),
+        );
+        archive_codex_snapshot(root.path(), "parent.jsonl", &bytes, "2026-08-05T00:00:05Z");
+
+        let ledger = Ledger::open(root.path()).expect("open ledger");
+        let latest_by_locator: BTreeMap<String, cclogger_archive::Snapshot> = ledger
+            .find_snapshots(&SnapshotFilter {
+                source_kind: Some(CODEX_SOURCE_KIND),
+                ..Default::default()
+            })
+            .expect("find snapshots")
+            .into_iter()
+            .map(|s| (s.source_locator.clone(), s))
+            .collect();
+
+        assert!(
+            codex_subagent_thread_ids(&ledger, &latest_by_locator).is_empty(),
+            "an empty agent_thread_id names no real thread and must not be collected"
         );
     }
 
