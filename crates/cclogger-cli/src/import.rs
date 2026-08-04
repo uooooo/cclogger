@@ -2022,8 +2022,34 @@ impl CodexPreScan {
             "response_item:custom_tool_call" | "response_item:function_call" => {
                 self.observe_tool_call(record, payload);
             }
+            "event_msg:sub_agent_activity" => {
+                self.observe_sub_agent_activity(payload);
+            }
             _ => {}
         }
+    }
+
+    /// Register the thread a `sub_agent_activity` record names as its subagent's own.
+    ///
+    /// A Codex subagent gets its own rollout file, so nothing on *that* file's own
+    /// records says it is a subagent -- the only evidence is the *parent* naming its
+    /// thread here. Registering it during the pre-scan is what lets a later pass,
+    /// which sees one record at a time, know whose file it is in.
+    ///
+    /// Registered unconditionally, from every file that names the thread: the parent
+    /// is the only evidence there is, and which of a subagent's own file or its
+    /// parent's file gets pre-scanned first is not under this code's control. The
+    /// value is unused -- presence is the whole fact -- so the thread id is registered
+    /// under itself rather than inventing a pseudonym for something the Keystore is
+    /// never actually asked to hand back.
+    fn observe_sub_agent_activity(&mut self, payload: &Value) {
+        let Some(thread) = payload.get("agent_thread_id").and_then(Value::as_str) else {
+            return;
+        };
+        if thread.is_empty() {
+            return;
+        }
+        self.map("codex_subagent_thread", thread, thread);
     }
 
     /// Register a tool call under **both** spellings of its id.
@@ -4656,6 +4682,61 @@ pub(crate) mod tests {
             started[0].subject, finished[0].subject,
             "the started/finished pair must land on one tool scope, or nothing can join \
              them back together"
+        );
+    }
+
+    #[test]
+    fn the_codex_pre_scan_registers_a_thread_named_as_a_subagent_by_another_file() {
+        // A Codex subagent gets its own rollout file, so nothing on that file's own
+        // records says it is a subagent. The parent file says it spawned a subagent
+        // whose thread is "thr-child".
+        let mut scan = CodexPreScan::default();
+        scan.observe(
+            &json!({
+                "type": "event_msg",
+                "timestamp": "2026-08-05T00:00:00.000Z",
+                "payload": {
+                    "type": "sub_agent_activity",
+                    "kind": "started",
+                    "agent_thread_id": "thr-child",
+                    "agent_path": "reviewer",
+                },
+            }),
+            TEST_HOME,
+        );
+        // An empty thread id names nothing -- registering it would collapse every
+        // file that ever resolves an empty vendor id onto one shared, meaningless key.
+        scan.observe(
+            &json!({
+                "type": "event_msg",
+                "timestamp": "2026-08-05T00:00:01.000Z",
+                "payload": {
+                    "type": "sub_agent_activity",
+                    "kind": "started",
+                    "agent_thread_id": "",
+                    "agent_path": "reviewer",
+                },
+            }),
+            TEST_HOME,
+        );
+        let (keystore, _) = scan.finish();
+
+        assert!(
+            keystore
+                .resolve("codex_subagent_thread", "thr-child")
+                .is_some(),
+            "a thread another file named as its subagent must be registered"
+        );
+        assert!(
+            keystore
+                .resolve("codex_subagent_thread", "thr-unrelated")
+                .is_none(),
+            "a thread nobody named must not be registered -- otherwise every session \
+             becomes a subagent and human attention drops to zero"
+        );
+        assert!(
+            keystore.resolve("codex_subagent_thread", "").is_none(),
+            "an empty agent_thread_id names no real thread and must not be registered"
         );
     }
 
