@@ -4854,10 +4854,12 @@ pub(crate) mod tests {
     /// `Vendor::pre_scan` call site is actually connected. Severing that wire inside
     /// `run_import` leaves this test green, because nothing below re-enters
     /// `run_import` to check it (see the comment on the `run_import` call below).
-    /// Closing that gap needs a ledger-visible signal this task does not yet produce
-    /// (`codex_history::transform_user_message` does not read this fact at all --
-    /// that is the next task's job); it is recorded there as a required assertion
-    /// through `run_import` on an actual observation's `data.origin`.
+    /// Closing that gap needed a ledger-visible signal this task did not yet produce
+    /// (`codex_history::transform_user_message` did not read this fact at all). It is
+    /// closed by
+    /// [`a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`]
+    /// right below, which asserts through `run_import` on an actual observation's
+    /// `data.origin`.
     #[test]
     fn a_subagent_rollout_is_recognised_from_its_parents_file() {
         // parent.jsonl says it spawned a subagent whose thread is "thr-child".
@@ -4908,11 +4910,10 @@ pub(crate) mod tests {
         // `codex_subagent_thread_ids` and `Vendor::Codex::pre_scan` directly rather
         // than through it. Severing that wire inside `run_import` (e.g. passing an
         // empty set instead of the one just computed) leaves every assertion below
-        // passing regardless. That gap cannot be closed here: nothing yet reads
-        // `codex_subagent_session` from a `Keystore`, so there is no ledger-visible
-        // signal a `run_import`-only test could assert on. It closes in the next
-        // task, whose own test asserts through `run_import` on an actual
-        // observation's `data.origin`.
+        // passing regardless. See
+        // `a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`
+        // right below, which reads an actual observation's `data.origin` back out of
+        // the ledger `run_import` wrote to and would catch exactly that.
         run_import(root.path(), false).expect("import");
 
         let ledger = Ledger::open(root.path()).expect("reopen ledger");
@@ -4965,6 +4966,97 @@ pub(crate) mod tests {
                 .resolve("codex_subagent_session", codex_history::FILE_SESSION)
                 .is_none(),
             "parent.jsonl named a subagent, but is not one itself"
+        );
+    }
+
+    /// Closes the gap the test above's doc comment names: it proves the pre-pass and
+    /// the pre-scan are each individually correct, and correct when composed by hand
+    /// exactly as `run_import` composes them -- but not that `run_import`'s own
+    /// per-locator loop performs that composition, because its assertions call
+    /// `codex_subagent_thread_ids` and `Vendor::Codex::pre_scan` directly rather than
+    /// reading anything `run_import` itself wrote. Severing `import.rs`'s wire from its
+    /// pre-pass call site to its `Vendor::pre_scan` call site (e.g. passing an empty set
+    /// in place of the one just computed) left that test green, because nothing read
+    /// `codex_subagent_session` back out of a `Keystore` at the time it was written.
+    ///
+    /// `codex_history::transform_user_message` now reads that fact and stamps
+    /// `data.origin`, so this test asks `run_import` the question directly: archive the
+    /// same shape of parent/child pair -- this time with the parent also carrying a
+    /// prompt of its own, so both sides of the distinction are observable -- run the
+    /// real import, and read the `prompt.submitted` rows it actually wrote out of the
+    /// ledger. Not a `Keystore`, and not adapter output fed a hand-built one.
+    #[test]
+    fn a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import() {
+        let cwd = "/SYNTHETIC/work/repo";
+        let parent_bytes = format!(
+            "{}\n{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.000Z",
+                cwd,
+                "thr-parent",
+                Some("ses-parent"),
+            ),
+            codex_user_message("2026-08-05T00:00:00.500Z", "SYNTHETIC human prompt"),
+            codex_sub_agent_activity("2026-08-05T00:00:01.000Z", "thr-child", "reviewer"),
+        );
+        let child_bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.500Z",
+                cwd,
+                "thr-child",
+                Some("ses-child"),
+            ),
+            codex_user_message("2026-08-05T00:00:02.000Z", "SYNTHETIC subagent prompt"),
+        );
+
+        let root = TempRoot::new("codex-subagent-origin");
+        archive_codex_snapshot(
+            root.path(),
+            "parent.jsonl",
+            &parent_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+        archive_codex_snapshot(
+            root.path(),
+            "child.jsonl",
+            &child_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+
+        run_import(root.path(), false).expect("import");
+
+        let prompts = bodies_of_type(root.path(), "dev.cclog.prompt.submitted.v1");
+        assert_eq!(prompts.len(), 2, "one prompt per file: {prompts:?}");
+
+        // Neither file's own `user_message` carries a `session_id` (see
+        // `codex_user_message`'s doc comment), so each resolves through
+        // `codex_history::FILE_SESSION` to whatever `CodexPreScan::finish` registered
+        // for *this* file -- the same opaque ref `pseudonymize` would derive from that
+        // file's own `session_meta.payload.session_id`, exactly as the real importer
+        // computes it.
+        let parent_subject = format!("session/{}", pseudonymize("ses", "ses-parent"));
+        let child_subject = format!("session/{}", pseudonymize("ses", "ses-child"));
+
+        let parent_prompt = prompts
+            .iter()
+            .find(|p| p["subject"].as_str() == Some(parent_subject.as_str()))
+            .unwrap_or_else(|| panic!("no prompt landed on the parent's session: {prompts:?}"));
+        let child_prompt = prompts
+            .iter()
+            .find(|p| p["subject"].as_str() == Some(child_subject.as_str()))
+            .unwrap_or_else(|| panic!("no prompt landed on the child's session: {prompts:?}"));
+
+        assert_eq!(
+            parent_prompt["data"]["origin"], "human",
+            "parent.jsonl is not itself a subagent's file: {parent_prompt:?}"
+        );
+        assert_eq!(
+            child_prompt["data"]["origin"], "subagent",
+            "child.jsonl IS the thread parent.jsonl's sub_agent_activity named, so \
+             run_import's own per-locator loop must have threaded the cross-file \
+             subagent_threads set into this file's pre-scan for its prompt to be \
+             marked: {child_prompt:?}"
         );
     }
 

@@ -23,6 +23,15 @@ use std::path::Path;
 /// The real Codex `session_meta.payload.session_id` this fixture's records share.
 const SESSION_ID: &str = "9f2c1a00-72e1-4b8a-9c40-5e1d2f3a4b5c";
 
+/// `subagent-prompt.fixture.json`'s two `session_id`s, standing in for two different
+/// rollout files. Both are named explicitly on the record -- unlike a real Codex
+/// `user_message`, which never carries `session_id` at all -- because that fixture's
+/// flat records list is checked against one shared [`Keystore`], and
+/// [`codex_history::FILE_SESSION`] can only stand for one file's fallback at a time;
+/// see that fixture's own `description`.
+const HUMAN_SESSION_ID: &str = "9f2c1a00-0000-4000-8000-000000000h01";
+const SUBAGENT_SESSION_ID: &str = "9f2c1a00-0000-4000-8000-000000000s01";
+
 fn fixture(name: &str) -> Value {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../adapters/codex/fixtures")
@@ -65,6 +74,18 @@ fn keystore() -> Keystore {
             "call_synthetic0001",
             "2026-07-20T04:02:10.000Z",
         )
+        // `subagent-prompt.fixture.json`'s two sessions, standing in for two different
+        // rollout files (see [`HUMAN_SESSION_ID`]'s doc comment). Only the subagent one
+        // gets `codex_subagent_session` -- registered exactly the way
+        // `CodexPreScan::finish` registers it in the real importer, under the same keys
+        // `"session"` is, with a value that is never read. Presence is the whole fact.
+        .map("session", HUMAN_SESSION_ID, "ses_HUM1")
+        .map("workspace", HUMAN_SESSION_ID, "wsp_XYZ1")
+        .map("repository", HUMAN_SESSION_ID, "rep_ACME")
+        .map("session", SUBAGENT_SESSION_ID, "ses_SUB1")
+        .map("workspace", SUBAGENT_SESSION_ID, "wsp_XYZ1")
+        .map("repository", SUBAGENT_SESSION_ID, "rep_ACME")
+        .map("codex_subagent_session", SUBAGENT_SESSION_ID, "subagent")
 }
 
 fn check(name: &str) {
@@ -109,6 +130,17 @@ fn check(name: &str) {
 #[test]
 fn history_prompt_reannounce_and_tool() {
     check("history-prompt.fixture.json");
+}
+
+/// Golden test for `adapters/codex/fixtures/subagent-prompt.fixture.json`: a subagent's
+/// own prompt is stamped `origin: "subagent"`, a human's `origin: "human"`, from the
+/// same [`codex_history::transform`] entry point every other prompt in this suite goes
+/// through -- the difference is entirely in what the `Keystore` (here, `keystore()`)
+/// has registered under `codex_subagent_session`, exactly as a real cross-file pre-scan
+/// would.
+#[test]
+fn subagent_prompt_origin() {
+    check("subagent-prompt.fixture.json");
 }
 
 /// The two `event_msg:user_message` records in `history-prompt.fixture.json` differ

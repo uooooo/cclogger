@@ -228,6 +228,16 @@ fn transform_user_message(payload: &Value, time: &str, ctx: &Keystore) -> Vec<Ob
     let (workspace, repository) = identity_refs(payload, ctx);
     let identity = content_identity("umsg", time, payload.get("message").unwrap_or(&Value::Null));
 
+    // Codex has no per-record subagent flag: a subagent writes its own rollout
+    // file, so the fact lives in the *parent* file's sub_agent_activity and
+    // reaches this file through the importer's cross-file pass. A prompt a
+    // subagent typed to itself is not a human's attention, and 70 of them are on
+    // the clock today.
+    let origin = match ctx.resolve("codex_subagent_session", session_key(payload)) {
+        Some(_) => "subagent",
+        None => "human",
+    };
+
     vec![ObservationDraft {
         event_type: "dev.cclog.prompt.submitted.v1".to_string(),
         subject: format!("session/{session}"),
@@ -247,7 +257,7 @@ fn transform_user_message(payload: &Value, time: &str, ctx: &Keystore) -> Vec<Ob
         // as the Claude Code historical path does -- would be a plausible-looking
         // default for something absent, and any bucket derived from the message
         // instead would leak the prompt's size out of a metadata-only ledger.
-        data: json!({ "content_ref": null }),
+        data: json!({ "content_ref": null, "origin": origin }),
     }]
 }
 
@@ -604,6 +614,40 @@ mod tests {
         assert_eq!(drafts[0].event_type, "dev.cclog.prompt.submitted.v1");
         assert_eq!(drafts[0].workspace_ref.as_deref(), Some("wsp_TEST"));
         assert_eq!(drafts[0].repository_ref.as_deref(), Some("rep_TEST"));
+    }
+
+    #[test]
+    fn a_prompts_origin_is_subagent_only_when_the_keystore_names_its_session_one() {
+        // `codex_subagent_session` is a cross-file fact the importer's pre-pass
+        // registers -- never derived from anything on this one record -- under the
+        // same keys `"session"` is, so it is looked up the same way: by
+        // `session_key(payload)`, "sess-1" for every record `user_message` builds
+        // here.
+        let unregistered = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &ks(),
+        );
+        assert_eq!(unregistered[0].data["origin"], "human");
+
+        let subagent_ks = ks().map("codex_subagent_session", "sess-1", "subagent");
+        let subagent = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &subagent_ks,
+        );
+        assert_eq!(subagent[0].data["origin"], "subagent");
+
+        // Presence is the whole fact -- the interface never reads the value. A match
+        // on `Some("subagent")` instead of `Some(_)` would pass the assertion above
+        // and still be wrong; this is what tells the two apart.
+        let odd_value_ks = ks().map("codex_subagent_session", "sess-1", "anything-at-all");
+        let odd = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &odd_value_ks,
+        );
+        assert_eq!(
+            odd[0].data["origin"], "subagent",
+            "presence in the keystore must be the whole fact, not a specific matched value"
+        );
     }
 
     #[test]
