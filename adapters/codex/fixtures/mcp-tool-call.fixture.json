@@ -1,0 +1,60 @@
+{
+  "vendor": "codex",
+  "variant": "mcp-tool-call",
+  "description": "One synthetic Codex transcript record: event_msg:mcp_tool_call_end, the only trace of an MCP tool call -- it carries no separate 'started' record, its own duration as a serialized {secs, nanos} Duration, and no session_id (like every non-session_meta Codex record). Exercises codex_history::transform's fallback identity path: call_synthetic_mcp01 is deliberately not registered in the shared keystore, so the scope is derived from call_id/server/tool -- never invocation.arguments or result, both of which are content.",
+  "records": [
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:05:00.000Z",
+      "payload": {
+        "type": "mcp_tool_call_end",
+        "call_id": "call_synthetic_mcp01",
+        "connector_id": "conn_synthetic01",
+        "plugin_id": "plugin_synthetic01",
+        "link_id": "link_synthetic01",
+        "app_name": "SYNTHETIC Acme Connector",
+        "action_name": "SYNTHETIC search_items",
+        "invocation": {
+          "server": "acme-connector",
+          "tool": "search_items",
+          "arguments": { "SYNTHETIC": "input" }
+        },
+        "duration": { "secs": 4, "nanos": 250000000 },
+        "result": { "SYNTHETIC": "output" }
+      }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc50c-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_CDX1/tool/mcpc_0d3a073bc2d994d8b68f",
+      "time": "2026-07-20T04:05:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T04:05:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|tool.finished|mcpc_0d3a073bc2d994d8b68f",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "tool_family": "mcp",
+        "outcome": "unknown",
+        "duration_ms": 4250,
+        "workspace_ref": "wsp_XYZ1",
+        "content_ref": null
+      }
+    }
+  ]
+}

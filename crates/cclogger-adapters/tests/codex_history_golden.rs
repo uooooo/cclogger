@@ -143,6 +143,19 @@ fn subagent_prompt_origin() {
     check("subagent-prompt.fixture.json");
 }
 
+/// `mcp_tool_call_end` is the only trace of an MCP tool call -- Task 4 of the Codex
+/// importer plan: 6,220 real records, none of them a second view of anything
+/// `function_call` already carries (zero of its 31 names are MCP names). Its `call_id`,
+/// `call_synthetic_mcp01`, is deliberately **not** registered under `"tool"` in
+/// [`keystore`], unlike the shell pair above: a real pre-scan does not yet observe
+/// `mcp_tool_call_end` either, so this exercises the fallback identity every real MCP
+/// import currently takes, and pins that it never reaches into `invocation.arguments`
+/// or `result` -- both content -- to build it.
+#[test]
+fn mcp_tool_call() {
+    check("mcp-tool-call.fixture.json");
+}
+
 /// The two `event_msg:user_message` records in `history-prompt.fixture.json` differ
 /// only in `client_id` -- the real corpus's harder collision shape (measured: one of
 /// four re-announcement groups differs in nothing else) -- and sit on non-adjacent

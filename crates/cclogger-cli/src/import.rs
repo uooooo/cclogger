@@ -5867,6 +5867,22 @@ pub(crate) mod tests {
                 "payload": { "type": "function_call_output", "call_id": "call_2", "output": "SYNTHETIC" },
             })
             .to_string(),
+            json!({
+                "type": "event_msg",
+                "timestamp": "2026-07-20T05:00:07.000Z",
+                "payload": {
+                    "type": "mcp_tool_call_end",
+                    "call_id": "call_3",
+                    "invocation": {
+                        "server": "synthetic-server",
+                        "tool": "synthetic_tool",
+                        "arguments": { "SYNTHETIC": "input" },
+                    },
+                    "duration": { "secs": 1, "nanos": 0 },
+                    "result": { "SYNTHETIC": "output" },
+                },
+            })
+            .to_string(),
         ];
         let mut seen = 0;
         for line in &records {
