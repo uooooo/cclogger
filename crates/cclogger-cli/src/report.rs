@@ -2315,12 +2315,12 @@ pub fn render(report: &PeriodReport) -> String {
     if report.coverage.prompts_not_anchored > 0 {
         let _ = writeln!(
             out,
-            "                       {} more prompt(s) came from a subagent's own dispatch, not a human --",
+            "                       {} more prompt(s) say, in their own data, that they are not a",
             report.coverage.prompts_not_anchored
         );
         let _ = writeln!(
             out,
-            "                       real agent activity, kept on that clock, but not counted as a prompt above"
+            "                       human's -- real agent activity, kept on that clock, not counted as a prompt above"
         );
     }
     if report.unattributed.attention_seconds > 0 || report.unattributed.agent_seconds > 0 {
@@ -3195,7 +3195,8 @@ pub(crate) mod tests {
             )],
             ACQUIRED_AT,
         );
-        let (parent, child) = codex_subagent_dispatch(&cwd, &at(7_200), &at(10_770), &at(10_800));
+        let (parent, child) =
+            codex_subagent_dispatch(&cwd, &at(7_200), &at(10_770), None, &at(10_800));
         archive_from(
             "codex",
             root.path(),
@@ -3231,7 +3232,7 @@ pub(crate) mod tests {
 
         let rendered = render(&report);
         assert!(
-            rendered.contains("subagent's own dispatch"),
+            rendered.contains("in their own data"),
             "and the exclusion is stated in the output rather than left to be inferred:\n\
              {rendered}"
         );
@@ -3252,9 +3253,20 @@ pub(crate) mod tests {
         // The parent's own activity sits far away, at local midnight, so its isolated
         // session start clusters to its own zero-length span and cannot pad this
         // number either way.
+        //
+        // All three of `agent_instants`, `agent_by_repository` and `agent_by_day` are
+        // pushed together in the same `else` arm (`:1536-1541`), but only the first
+        // feeds the headline `agent_union_seconds` asserted below. A change that
+        // dropped the prompt-typed row from *either* per-repository or per-day pushed
+        // while leaving the global push intact would leave `agent_union_seconds`
+        // reading 30 regardless -- there is only one repository and every instant
+        // here falls on one calendar day, so the headline cannot tell the two
+        // attributions apart from the sum they are drawn from. `repository_row`'s
+        // `agent_seconds` and `agent_daily_sum_seconds` below are what would actually
+        // catch that: both are 30 only if the denied prompt reached both of them too.
         let root = TempRoot::new("report-subagent-agent-clock");
         let cwd = cwd_for("github.com/acme/api");
-        let (parent, child) = codex_subagent_dispatch(&cwd, &at(0), &at(7_200), &at(7_230));
+        let (parent, child) = codex_subagent_dispatch(&cwd, &at(0), &at(7_200), None, &at(7_230));
         archive_from(
             "codex",
             root.path(),
@@ -3277,6 +3289,77 @@ pub(crate) mod tests {
         assert_eq!(
             report.agent_union_seconds, 30,
             "the subagent's own dispatch joined the session start it followed, not the void"
+        );
+        assert_eq!(
+            repository_row(&report, "github.com/acme/api").agent_seconds,
+            30,
+            "the repository row's own clustering must see the denied prompt too, not \
+             just the global timeline"
+        );
+        assert_eq!(
+            report.agent_daily_sum_seconds, 30,
+            "and so must the day it landed on -- the headline union alone cannot prove \
+             either attribution actually happened"
+        );
+    }
+
+    #[test]
+    fn a_subagent_prompt_never_gets_paired_as_a_response_time() {
+        // The `else` arm only ever pushes `Turn::Completed` for a denied prompt's row,
+        // never `Turn::Prompted` -- that distinction is what this test exists to pin.
+        // A future refactor that unified this arm's `turns_by_session` handling with
+        // the anchoring one above (pushing `Turn::Prompted` here too) would compile,
+        // and every other test in this module would still pass: none of them look at
+        // `response_times` for a denied-prompt session.
+        //
+        // The child's file carries an assistant response, then its own denied prompt
+        // 30 seconds later, in that order and in the same session. Correctly, the
+        // response is never consumed -- there is no `Turn::Prompted` in this session
+        // to consume it -- so it contributes nothing. Under the regression, the
+        // denied prompt would become a `Turn::Prompted`, taking the unconsumed
+        // response and measuring a spurious 30-second "reaction" nobody had, which
+        // would pull a real median down and inflate `prompts_walked` on a real ledger.
+        //
+        // The parent's own prompt (real, anchoring, in its own session with no
+        // response before it) is the only `Turn::Prompted` this fixture correctly
+        // produces -- back-to-back rather than a reaction, so it adds to
+        // `prompts_walked` but not to `response.count`. Under the regression the
+        // child's spurious pairing adds a second `Turn::Prompted` on top of it, so
+        // `prompts_walked` is asserted at exactly 1 rather than left unchecked: 2
+        // would mean the walk saw a prompt that was never a human's.
+        let root = TempRoot::new("report-subagent-response-time-guard");
+        let cwd = cwd_for("github.com/acme/api");
+        let (parent, child) =
+            codex_subagent_dispatch(&cwd, &at(0), &at(3_600), Some(&at(3_630)), &at(3_660));
+        archive_from(
+            "codex",
+            root.path(),
+            ".codex/sessions/2026/07/26/parent.jsonl",
+            &parent,
+            ACQUIRED_AT,
+        );
+        archive_from(
+            "codex",
+            root.path(),
+            ".codex/sessions/2026/07/26/child.jsonl",
+            &child,
+            ACQUIRED_AT,
+        );
+        run_import(root.path(), false).expect("import the synthetic ledger");
+
+        let report =
+            run_report(root.path(), Period::of_day(day()), TZ).expect("report the synthetic day");
+
+        assert_eq!(
+            report.response_times.response.count, 0,
+            "the child's own dispatch must never be paired as an answer to the response \
+             that preceded it -- there is no reaction to measure from a prompt that was \
+             never a human's"
+        );
+        assert_eq!(
+            report.response_times.prompts_walked, 1,
+            "only the parent's real prompt is ever seen as a `Turn::Prompted`; the \
+             child's denied one is not walked a second time"
         );
     }
 

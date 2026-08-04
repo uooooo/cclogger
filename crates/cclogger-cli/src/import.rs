@@ -3349,16 +3349,24 @@ pub(crate) mod tests {
 
     /// A parent Codex rollout that submits one prompt of its own and then dispatches a
     /// subagent to [`CODEX_SUBAGENT_THREAD`], and the child rollout that subagent
-    /// writes to its own file with a session start and one prompt of its own -- the
-    /// cross-file shape `codex_history::transform_user_message` reads through the
-    /// importer's pre-pass to stamp `data.origin`: `"human"` on the parent's prompt,
-    /// `"subagent"` on the child's. `(parent_lines, child_lines)`.
+    /// writes to its own file with a session start, an optional assistant response, and
+    /// one prompt of its own -- the cross-file shape
+    /// `codex_history::transform_user_message` reads through the importer's pre-pass to
+    /// stamp `data.origin`: `"human"` on the parent's prompt, `"subagent"` on the
+    /// child's. `(parent_lines, child_lines)`.
     ///
     /// The child's own session start and its own prompt take separate timestamps --
     /// unlike the parent's, which share `parent_at` -- so a caller can place them close
     /// enough to cluster on the agent clock without also collapsing to one instant,
     /// which would cluster to zero seconds whether or not the prompt actually joined
     /// the cluster and so could not tell the two cases apart.
+    ///
+    /// `child_response_at`, when `Some`, inserts an assistant response into the child's
+    /// own file before its own prompt -- the shape a response-time regression needs to
+    /// be caught by: a denied prompt must never become `Turn::Prompted` and consume it,
+    /// which is exactly what a future refactor unifying this arm's `turns_by_session`
+    /// handling with the anchoring one could do without any test noticing, since every
+    /// other assertion here is about counts and clocks, never about response pairing.
     ///
     /// Shared with `report.rs`'s and `log.rs`'s test modules rather than copied into
     /// them, for the same reason [`codex_forked_rollout`] is: the shape a subagent
@@ -3370,6 +3378,7 @@ pub(crate) mod tests {
         cwd: &str,
         parent_at: &str,
         child_session_at: &str,
+        child_response_at: Option<&str>,
         child_prompt_at: &str,
     ) -> (Vec<String>, Vec<String>) {
         let parent = vec![
@@ -3382,15 +3391,19 @@ pub(crate) mod tests {
             codex_user_message(parent_at, "SYNTHETIC human prompt"),
             codex_sub_agent_activity(parent_at, CODEX_SUBAGENT_THREAD, "reviewer"),
         ];
-        let child = vec![
-            codex_session_meta_with(
-                child_session_at,
-                cwd,
-                CODEX_SUBAGENT_THREAD,
-                Some(CODEX_SUBAGENT_THREAD),
-            ),
-            codex_user_message(child_prompt_at, "SYNTHETIC subagent prompt"),
-        ];
+        let mut child = vec![codex_session_meta_with(
+            child_session_at,
+            cwd,
+            CODEX_SUBAGENT_THREAD,
+            Some(CODEX_SUBAGENT_THREAD),
+        )];
+        if let Some(response_at) = child_response_at {
+            child.push(codex_agent_message(response_at, "SYNTHETIC response"));
+        }
+        child.push(codex_user_message(
+            child_prompt_at,
+            "SYNTHETIC subagent prompt",
+        ));
         (parent, child)
     }
 

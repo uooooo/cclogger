@@ -2938,7 +2938,7 @@ mod tests {
         // the subagent.
         let root = TempRoot::new("log-codex-subagent-origin");
         let cwd = cwd_for("github.com/acme/api");
-        let (parent, child) = codex_subagent_dispatch(&cwd, &at(0), &at(30), &at(60));
+        let (parent, child) = codex_subagent_dispatch(&cwd, &at(0), &at(30), None, &at(60));
         archive_from(
             "codex",
             root.path(),
