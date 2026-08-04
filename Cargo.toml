@@ -1,0 +1,44 @@
+# cclogger Rust workspace.
+[workspace]
+resolver = "3"
+members = ["crates/cclogger-domain", "crates/cclogger-adapters", "crates/cclogger-archive", "crates/cclogger-cli"]
+
+[workspace.package]
+# 0.y.z on purpose: SemVer reserves it for "anything may change", which is what the
+# README already says about the CLI surface and the ledger schema. Not 0.0.x -- the
+# tool is working and used daily, and npm's `^0.0.1` matches nothing but 0.0.1, which
+# would make every release a manual bump for no signal. Bumps the minor on a breaking
+# change, the patch otherwise, until there is a reason to promise 1.0.
+version = "0.1.0"
+edition = "2024"
+# 1.88, not the 1.85 that makes edition 2024 available. The CLI uses `let` chains
+# (`if cond && let Some(x) = ...`), which edition 2024 only stabilised in 1.88 -- on
+# 1.85 through 1.87 the workspace does not compile at all, with an E0658 that names an
+# unstable feature rather than a version. Declaring the real floor turns that into
+# cargo's own "requires rustc 1.88" message. .github/workflows/ci.yml pins the gate to
+# this exact version and fails if the two stop matching.
+rust-version = "1.88"
+license = "Apache-2.0"   # ADR-0002
+repository = "https://github.com/uooooo/cclogger"
+# Not on crates.io yet -- prebuilt binaries and the npm package come from GitHub
+# Releases (see docs/releasing.md), and building from source uses
+# `cargo install --git`. Flip when the ledger schema and the CLI surface stop moving;
+# `[package.metadata.dist] dist = true` in crates/cclogger-cli is what lets dist build a
+# binary from a package this flag would otherwise hide from it.
+publish = false
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+cclogger-domain = { path = "crates/cclogger-domain" }
+cclogger-archive = { path = "crates/cclogger-archive" }
+cclogger-adapters = { path = "crates/cclogger-adapters" }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"

@@ -1,0 +1,144 @@
+{
+  "description": "The three things only the hook channel can see: which subagent made a tool call, a tool call that failed, and a turn that ended in an API error.",
+  "exercises": [
+    "agent_id / agent_type are present only in subagent context, which is how this channel tells subagent work apart at all",
+    "PostToolUseFailure is a failed tool call -- the transcript path's `unknown` outcome, measured",
+    "a PostToolUseFailure carrying no duration_ms reports null, never 0",
+    "StopFailure is a turn that ended in an API error; `Stop` never fires for one",
+    "a main-loop tool call names no agent, and absence is left as absence"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "hook-spool",
+    "records": [
+      {
+        "v": 1,
+        "hook_event_name": "PostToolUse",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-03",
+        "tool_use_id": "cc-tool-7mx",
+        "tool_name": "Read",
+        "agent_id": "cc-agent-1",
+        "agent_type": "Explore",
+        "duration_ms": 17,
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:10:02.500Z"
+      },
+      {
+        "v": 1,
+        "hook_event_name": "PostToolUseFailure",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-03",
+        "tool_use_id": "cc-tool-8ny",
+        "tool_name": "Bash",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:10:09.310Z"
+      },
+      {
+        "v": 1,
+        "hook_event_name": "StopFailure",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-03",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:10:11.004Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8e01-7031-8a31-0000cc9d2f31",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_9D2F/turn/trn_03/tool/tol_7MX",
+      "time": "2026-07-20T03:10:02.500Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T03:10:02.540Z",
+      "cclogmonotonicns": 81702500000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|tol_7MX|tool.finished|2026-07-20T03:10:02.500Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "tool_family": "read",
+        "outcome": "succeeded",
+        "duration_ms": 17,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null,
+        "agent_ref": "agt_5RD",
+        "agent_type": "Explore",
+        "time_basis": "received_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8e02-7032-9a32-0000cc9d2f32",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_9D2F/turn/trn_03/tool/tol_8NY",
+      "time": "2026-07-20T03:10:09.310Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T03:10:09.350Z",
+      "cclogmonotonicns": 81709310000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|tol_8NY|tool.finished|2026-07-20T03:10:09.310Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "tool_family": "shell",
+        "outcome": "failed",
+        "duration_ms": null,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8e03-7033-8a33-0000cc9d2f33",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.response.completed.v1",
+      "subject": "session/ses_9D2F/turn/trn_03",
+      "time": "2026-07-20T03:10:11.004Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:3",
+      "cclogobservedat": "2026-07-20T03:10:11.044Z",
+      "cclogmonotonicns": 81711004000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|trn_03|response.completed|2026-07-20T03:10:11.004Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "outcome": "failed",
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    }
+  ]
+}

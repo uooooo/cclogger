@@ -1,0 +1,280 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cclog.dev/schema/cclog.observation.v0.schema.json",
+  "title": "cclog canonical observation v0",
+  "description": "Canonical observation as stored in the local ledger. CloudEvents 1.0 compatible envelope + cclog extension attributes. Content is never inlined; observations reference content only via content_ref.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specversion",
+    "id",
+    "source",
+    "type",
+    "subject",
+    "time",
+    "datacontenttype",
+    "cclogschemaversion",
+    "cclogsourcekind",
+    "cclogsourceversion",
+    "cclogadapterversion",
+    "cclogobservedat",
+    "cclogprivacyclass",
+    "cclogdedupekey",
+    "cclogintegritystate",
+    "cclogprofile",
+    "data"
+  ],
+  "properties": {
+    "specversion": { "const": "1.0" },
+    "id": {
+      "description": "observation_id, UUIDv7. Approximates emit order; not a truth of wall time.",
+      "$ref": "#/$defs/uuidv7"
+    },
+    "source": {
+      "description": "Opaque device + adapter identity only. Never a username, absolute path, or global machine id.",
+      "type": "string",
+      "pattern": "^cclog://device/[A-Za-z0-9_-]+/adapter/[a-z0-9-]+$"
+    },
+    "type": {
+      "description": "dev.cclog.<domain>.<event>.v<n>. Vendor event names are never exposed here.",
+      "type": "string",
+      "pattern": "^dev\\.cclog\\.[a-z]+\\.[a-z_]+\\.v[0-9]+$"
+    },
+    "subject": {
+      "description": "Opaque hierarchical ref path (session/turn/tool...). Opaque tokens only.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_./:-]+$",
+      "maxLength": 512
+    },
+    "time": {
+      "description": "occurred_at: source wall clock of the event.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "datacontenttype": { "const": "application/json" },
+    "traceparent": {
+      "description": "W3C trace context, kept as local correlation evidence only. Never re-exported to a destination as-is.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+    },
+    "cclogschemaversion": { "const": 0 },
+    "cclogsourcekind": {
+      "enum": ["claude-code", "codex", "git", "otlp", "os-presence", "media"]
+    },
+    "cclogsourceversion": {
+      "description": "Adapter-facing source contract fingerprint, e.g. codex-hook/1.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cclogadapterversion": { "type": "string", "minLength": 1 },
+    "cclogsourcerecordref": {
+      "description": "Local opaque reference to the raw source record (e.g. a transcript_path locator). Never the bytes or a global path.",
+      "type": ["string", "null"]
+    },
+    "cclogobservedat": {
+      "description": "observed_at: when the collector received the event (daemon clock).",
+      "type": "string",
+      "format": "date-time"
+    },
+    "cclogmonotonicns": { "type": ["integer", "null"], "minimum": 0 },
+    "cclogbootid": { "type": ["string", "null"] },
+    "cclogprivacyclass": {
+      "enum": ["t0_aggregate", "t1_structured", "t2_content", "t3_media"]
+    },
+    "cclogpurposehint": {
+      "description": "Nullable inference. Never a fact of capture or an authorization input.",
+      "type": ["string", "null"]
+    },
+    "cclogdedupekey": { "type": "string", "minLength": 1 },
+    "cclogintegritystate": {
+      "enum": ["ok", "possible_duplicate", "gap", "clock_skew", "quarantined"]
+    },
+    "cclogprofile": {
+      "description": "Local routing zone. Anything unclassified defaults to personal. Local-only; not exported to any destination as-is.",
+      "enum": ["personal", "client"]
+    },
+    "cclogworkspaceref": { "type": ["string", "null"], "pattern": "^wsp_[A-Za-z0-9]+$" },
+    "cclogrepositoryref": { "type": ["string", "null"], "pattern": "^rep_[A-Za-z0-9]+$" },
+    "cclogcorrelationcluster": {
+      "description": "Optional ingest-time cluster hint when an explicit trace or same-batch evidence identifies the same action. Current semantic correlation, including late arrivals, lives in versioned edges/projections.",
+      "type": ["string", "null"],
+      "pattern": "^cor_[A-Za-z0-9]+$"
+    },
+    "data": { "type": "object" }
+  },
+  "allOf": [
+    { "if": { "properties": { "type": { "const": "dev.cclog.session.started.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_session_started" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.session.ended.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_session_ended" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.prompt.submitted.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_prompt_submitted" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.response.completed.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_response_completed" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.approval.requested.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_approval" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.approval.resolved.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_approval" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.tool.started.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_tool_started" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.tool.finished.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_tool_finished" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.command.finished.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_command_finished" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.commit.observed.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_commit_observed" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.device.active.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_presence" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.source.gap.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_integrity" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.source.duplicate.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_integrity" } } } }
+  ],
+  "$defs": {
+    "uuidv7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "ref_token": { "type": "string", "pattern": "^[a-z]+_[A-Za-z0-9]+$" },
+    "content_ref": {
+      "description": "Null in metadata-only mode (the default). Points into the encrypted local vault only when content capture is opted in.",
+      "type": ["string", "null"],
+      "pattern": "^cnt_[A-Za-z0-9]+$"
+    },
+    "count_bucket": {
+      "description": "Coarse magnitude bucket. Exact counts of sensitive quantities are not stored on T1 rows. Every field of this type is OPTIONAL, and absence is how a producer says NOT MEASURED: `\"0\"` is a measurement (the source reported a count that fell in the zero bucket), so a producer whose source carries no count must omit the field rather than emit `\"0\"`. There is deliberately no `null`/`unknown` member here -- a bucket value always means something was counted.",
+      "enum": ["0", "1-9", "10-99", "100-999", "1000-9999", "10000+"]
+    },
+    "outcome": { "enum": ["succeeded", "failed", "cancelled", "timed_out", "unknown"] },
+    "agent_ref": {
+      "description": "Opaque pseudonym of the subagent that produced this observation. Present only when the source said a subagent was responsible -- the Claude Code hook channel carries `agent_id` only inside a subagent. ABSENCE IS NOT `false`: it means the source named no subagent, which under that channel's documented contract is the main loop, but no producer asserts that here.",
+      "type": "string",
+      "pattern": "^agt_[A-Za-z0-9]+$"
+    },
+    "agent_type": {
+      "description": "The subagent's own name, as the source spells it (e.g. `Explore`, or a plugin-scoped `my-plugin:reviewer`). Vendor-controlled text, so it is held to the same discipline as an integrity marker's `detail`: a plain identifier, or the field is omitted. Never a path, a sentence, or anything a user typed as content.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_:-]+$",
+      "maxLength": 64
+    },
+    "duration_ms": {
+      "description": "Elapsed milliseconds, measured. `null` means NOT MEASURED -- the producer could not close the interval (e.g. a historical tool result whose starting record is not in the same snapshot). It never means zero. `0` is a real measurement of something that completed within a millisecond, so a producer that lacks a measurement must emit `null` rather than `0`: the two channels feeding this field (live hooks, historical import) are aggregated together, and a fabricated `0` is indistinguishable from a measurement and biases every aggregate downward.",
+      "type": ["integer", "null"],
+      "minimum": 0
+    },
+    "data_session_started": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["session_kind"],
+      "properties": {
+        "session_kind": { "enum": ["interactive", "headless", "unknown"] },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_session_ended": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "enum": ["completed", "aborted", "timeout", "crash", "unknown"] },
+        "turn_count": { "$ref": "#/$defs/count_bucket" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_prompt_submitted": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["content_ref"],
+      "properties": {
+        "prompt_tokens": { "$ref": "#/$defs/count_bucket" },
+        "content_ref": { "$ref": "#/$defs/content_ref" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_response_completed": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["outcome", "content_ref"],
+      "properties": {
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "response_tokens": { "$ref": "#/$defs/count_bucket" },
+        "content_ref": { "$ref": "#/$defs/content_ref" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_approval": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["approval_kind"],
+      "properties": {
+        "approval_kind": { "enum": ["command", "file_write", "network", "tool", "other"] },
+        "decision": { "enum": ["approved", "denied", "deferred", "pending"] }
+      }
+    },
+    "data_tool_started": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tool_family", "content_ref"],
+      "properties": {
+        "tool_family": { "enum": ["shell", "edit", "read", "search", "web", "mcp", "other"] },
+        "workspace_ref": { "type": ["string", "null"], "pattern": "^wsp_[A-Za-z0-9]+$" },
+        "content_ref": { "$ref": "#/$defs/content_ref" },
+        "agent_ref": { "$ref": "#/$defs/agent_ref" },
+        "agent_type": { "$ref": "#/$defs/agent_type" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_tool_finished": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tool_family", "outcome", "duration_ms", "content_ref"],
+      "properties": {
+        "tool_family": { "enum": ["shell", "edit", "read", "search", "web", "mcp", "other"] },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "duration_ms": { "$ref": "#/$defs/duration_ms" },
+        "workspace_ref": { "type": ["string", "null"], "pattern": "^wsp_[A-Za-z0-9]+$" },
+        "content_ref": { "$ref": "#/$defs/content_ref" },
+        "agent_ref": { "$ref": "#/$defs/agent_ref" },
+        "agent_type": { "$ref": "#/$defs/agent_type" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_command_finished": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["command_family", "outcome", "content_ref"],
+      "properties": {
+        "command_family": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "exit_code_class": { "enum": ["zero", "nonzero", "signal", "unknown"] },
+        "duration_ms": { "$ref": "#/$defs/duration_ms" },
+        "content_ref": { "$ref": "#/$defs/content_ref" }
+      }
+    },
+    "data_commit_observed": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["repository_ref", "changed_paths_count"],
+      "properties": {
+        "repository_ref": { "type": "string", "pattern": "^rep_[A-Za-z0-9]+$" },
+        "changed_paths_count": { "type": "integer", "minimum": 0 },
+        "insertions_bucket": { "$ref": "#/$defs/count_bucket" },
+        "deletions_bucket": { "$ref": "#/$defs/count_bucket" },
+        "message_ref": { "$ref": "#/$defs/content_ref" }
+      }
+    },
+    "data_presence": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["state"],
+      "properties": {
+        "state": { "enum": ["active", "idle", "locked"] }
+      }
+    },
+    "data_integrity": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "detail": {
+          "type": ["string", "null"],
+          "description": "A short, validated label for what was lost (e.g. the record kind, or the name of a missing field). Never source content: producers must reject anything that is not a plain identifier rather than truncate or escape it. `null` when no safe label is available -- the marker's identity is already carried by its subject and dedupe key.",
+          "maxLength": 64
+        },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "time_basis": {
+      "enum": ["occurred_at", "acquired_at", "copied_at", "received_at"],
+      "description": "Which clock this observation's `time` came from. `occurred_at`: the source record's own timestamp, i.e. when the activity happened. `acquired_at`: the time the snapshot holding it was collected -- a fallback used when the record carries no timestamp of its own, and NOT a measurement of when the activity happened. `copied_at`: the source record's own timestamp, on a record that was COPIED out of another transcript and re-stamped when the copy was written -- so it is when the copying happened, not the activity, and the original time is not recoverable from that file. `received_at`: a receipt stamp taken by cclog's own receiver at the moment the source invoked it SYNCHRONOUSLY -- used by the Claude Code hook channel, where the reference states no hook event carries a timestamp of its own, so the receiver's clock is the only time source there is. Absent means the producer took the source record's own timestamp and had nothing to qualify. A consumer putting an observation on a clock must admit absence, `occurred_at` and `received_at`, and must exclude `acquired_at` and `copied_at`. The line is between a measurement of the event's instant and something else standing in for one: `received_at` differs from the event by the time the source took to spawn the receiver, which is milliseconds and bounded, whereas `acquired_at` can be days later and `copied_at` is a different event's time entirely."
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "vendor": "codex",
+  "variant": "session-meta-variants",
+  "description": "session_meta payload key sets vary across cli_version. Per docs/source-inventory.md's fingerprint table, only base_instructions, cli_version, cwd, id, model_provider, originator, source and timestamp are present in every observed variant; git, session_id, thread_source and history_mode are each absent from at least one real fingerprint, so identity resolution must key off id/cwd rather than the richer optional fields. Record 1 reproduces the corpus's single most common exact key set (older CLI, no session_id/dynamic_tools/multi-agent fields); record 2 reproduces the second most common (newer CLI, with the multi-agent/subagent fields agent_nickname/agent_path/forked_from_id/parent_thread_id). turn_context is a separate, per-turn record kind included here to show it alongside session identity.",
+  "records": [
+    {
+      "type": "session_meta",
+      "timestamp": "2026-07-20T04:02:00.000Z",
+      "payload": {
+        "id": "dddddddd-4444-4444-8444-444444444444",
+        "cwd": "/Users/dev/ghq/github.com/acme/api",
+        "cli_version": "0.141.0",
+        "originator": "cli",
+        "source": "interactive",
+        "thread_source": "root",
+        "model_provider": "synthetic",
+        "base_instructions": "SYNTHETIC",
+        "git": {
+          "branch": "main",
+          "commit_hash": "0000000000000000000000000000000000000000",
+          "repository_url": "https://example.invalid/acme/api.git"
+        },
+        "timestamp": "2026-07-20T04:02:00.000Z"
+      }
+    },
+    {
+      "type": "session_meta",
+      "timestamp": "2026-07-20T04:03:00.000Z",
+      "payload": {
+        "id": "eeeeeeee-5555-4555-8555-555555555555",
+        "session_id": "eeeeeeee-5555-4555-8555-555555555555",
+        "cwd": "/Users/dev/ghq/github.com/acme/api",
+        "cli_version": "0.144.2",
+        "originator": "cli",
+        "source": "interactive",
+        "thread_source": "fork",
+        "history_mode": "full",
+        "model_provider": "synthetic",
+        "context_window": 400000,
+        "dynamic_tools": [],
+        "multi_agent_version": "1",
+        "agent_nickname": "SYNTHETIC-subagent",
+        "agent_path": "root.sub-1",
+        "forked_from_id": "dddddddd-4444-4444-8444-444444444444",
+        "parent_thread_id": "dddddddd-4444-4444-8444-444444444444",
+        "base_instructions": "SYNTHETIC",
+        "git": {
+          "branch": "feature/x",
+          "commit_hash": "1111111111111111111111111111111111111111",
+          "repository_url": "https://example.invalid/acme/api.git"
+        },
+        "timestamp": "2026-07-20T04:03:00.000Z"
+      }
+    },
+    {
+      "type": "turn_context",
+      "timestamp": "2026-07-20T04:03:05.000Z",
+      "payload": {
+        "turn_id": "turn_synthetic1",
+        "cwd": "/Users/dev/ghq/github.com/acme/api",
+        "model": "synthetic-model",
+        "effort": "high",
+        "timezone": "Asia/Tokyo",
+        "current_date": "2026-07-20",
+        "approval_policy": "on-request",
+        "sandbox_policy": "workspace-write",
+        "workspace_roots": ["/Users/dev/ghq/github.com/acme/api"]
+      }
+    }
+  ]
+}

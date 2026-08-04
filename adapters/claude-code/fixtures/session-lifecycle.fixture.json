@@ -1,0 +1,91 @@
+{
+  "description": "Claude Code SessionStart / SessionEnd hooks → session lifecycle observations, read from the spool `cclogger hook` writes.",
+  "exercises": [
+    "lifecycle normalization from spool lines",
+    "opaque source (no username / path / machine id)",
+    "metadata-only (no content_ref)",
+    "default-deny routing to the personal profile",
+    "session_kind is `unknown`: no hook payload field says interactive or headless",
+    "a documented SessionEnd reason outside the canonical vocabulary is `unknown`, not `completed`",
+    "time_basis is `received_at`: no hook event carries a timestamp"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "hook-spool",
+    "records": [
+      {
+        "v": 1,
+        "hook_event_name": "SessionStart",
+        "session_id": "cc-9d2f",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T02:59:10.001Z"
+      },
+      {
+        "v": 1,
+        "hook_event_name": "SessionEnd",
+        "session_id": "cc-9d2f",
+        "cwd": "/work/acme-web",
+        "reason": "logout",
+        "received_at": "2026-07-20T03:41:52.774Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-7a10-7001-8a01-0000cc9d2f01",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.session.started.v1",
+      "subject": "session/ses_9D2F",
+      "time": "2026-07-20T02:59:10.001Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T02:59:10.050Z",
+      "cclogmonotonicns": 81000000001,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|session.started|2026-07-20T02:59:10.001Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "session_kind": "unknown",
+        "time_basis": "received_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9a55-7002-9b02-0000cc9d2f02",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.session.ended.v1",
+      "subject": "session/ses_9D2F",
+      "time": "2026-07-20T03:41:52.774Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T03:41:52.810Z",
+      "cclogmonotonicns": 83562773000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|session.ended|2026-07-20T03:41:52.774Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "reason": "unknown",
+        "time_basis": "received_at"
+      }
+    }
+  ]
+}

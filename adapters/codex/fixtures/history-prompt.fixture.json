@@ -1,0 +1,204 @@
+{
+  "vendor": "codex",
+  "variant": "history-prompt-reannounce-and-tool",
+  "description": "One synthetic Codex transcript file: session_meta, a human prompt, the same prompt re-announced on a non-adjacent line with a different client_id (the real corpus's harder collision shape -- see docs/superpowers/plans/2026-08-01-codex-importer.md), and a custom_tool_call / custom_tool_call_output pair. Exercises codex_history::transform against the historical path, which nothing else schema-validates.",
+  "records": [
+    {
+      "type": "session_meta",
+      "timestamp": "2026-07-20T04:02:00.000Z",
+      "payload": {
+        "id": "9f2c1a00-72e1-4b8a-9c40-5e1d2f3a4b5c",
+        "session_id": "9f2c1a00-72e1-4b8a-9c40-5e1d2f3a4b5c",
+        "cwd": "/Users/dev/ghq/github.com/acme/api",
+        "cli_version": "0.144.2",
+        "originator": "cli",
+        "source": "interactive",
+        "thread_source": "root",
+        "model_provider": "synthetic",
+        "base_instructions": "SYNTHETIC"
+      }
+    },
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:02:05.000Z",
+      "payload": {
+        "type": "user_message",
+        "message": "SYNTHETIC prompt one",
+        "client_id": "c1"
+      }
+    },
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:02:10.000Z",
+      "payload": {
+        "type": "custom_tool_call",
+        "id": "ctc_synthetic0001",
+        "call_id": "call_synthetic0001",
+        "name": "shell",
+        "input": "SYNTHETIC",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:02:17.000Z",
+      "payload": {
+        "type": "custom_tool_call_output",
+        "call_id": "call_synthetic0001",
+        "output": "SYNTHETIC"
+      }
+    },
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:02:05.000Z",
+      "payload": {
+        "type": "user_message",
+        "message": "SYNTHETIC prompt one",
+        "client_id": "c2"
+      }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc50a-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.session.started.v1",
+      "subject": "session/ses_CDX1",
+      "time": "2026-07-20T04:02:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T04:02:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|session.started",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "session_kind": "interactive"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc50a-0002-7002-8002-000000000002",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_CDX1",
+      "time": "2026-07-20T04:02:05.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T04:02:05.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|prompt.submitted|umsg_6cd1f7e4cfe0ba842df6",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc50a-0003-7003-8003-000000000003",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.tool.started.v1",
+      "subject": "session/ses_CDX1/tool/tol_0001",
+      "time": "2026-07-20T04:02:10.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:3",
+      "cclogobservedat": "2026-07-20T04:02:10.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|tool.started|tol_0001",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "tool_family": "shell",
+        "workspace_ref": "wsp_XYZ1",
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc50a-0004-7004-8004-000000000004",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_CDX1/tool/tol_0001",
+      "time": "2026-07-20T04:02:17.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:4",
+      "cclogobservedat": "2026-07-20T04:02:17.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|tool.finished|tol_0001",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "tool_family": "shell",
+        "outcome": "unknown",
+        "duration_ms": 7000,
+        "workspace_ref": "wsp_XYZ1",
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc50a-0005-7005-8005-000000000005",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_CDX1",
+      "time": "2026-07-20T04:02:05.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:5",
+      "cclogobservedat": "2026-07-20T04:02:05.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_CDX1|prompt.submitted|umsg_6cd1f7e4cfe0ba842df6",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "content_ref": null
+      }
+    }
+  ]
+}

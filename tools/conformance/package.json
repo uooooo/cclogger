@@ -1,0 +1,15 @@
+{
+  "name": "cclog-conformance",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 conformance harness: validate synthetic fixtures against the canonical observation schema.",
+  "scripts": {
+    "validate": "bun run validate.ts",
+    "validate:shapes": "bun run shapes.ts",
+    "validate:all": "bun run validate && bun run validate:shapes"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "ajv-formats": "^3.0.1"
+  }
+}

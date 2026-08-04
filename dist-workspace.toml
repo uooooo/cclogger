@@ -1,0 +1,36 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist' -- https://opensource.axo.dev/cargo-dist/
+#
+# What this produces, on a pushed `v*` tag: prebuilt binaries as GitHub Release
+# assets, a shell installer that fetches them, and an npm package that does the
+# same. See docs/releasing.md for the procedure and docs/adr/0003-name.md for why
+# the npm package is named `cclogger` while the Cargo package is `cclogger-cli`.
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app
+installers = ["shell", "npm"]
+# Target platforms to build apps for (Rust target-triple syntax).
+#
+# **Windows is absent on purpose and must not be added.** `cclogger-archive` uses
+# `std::os::unix` to hold the archive at 0600 under a 0700 directory -- it does not
+# compile for Windows, and the privacy property it enforces has no Windows
+# equivalent here. See README "Install".
+#
+# aarch64-unknown-linux-gnu is absent only because nobody has asked; adding it is
+# one entry here plus a rerun of `dist init`.
+targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu"]
+# Path that installers should place binaries in.
+#
+# `~/.cargo/bin` -- which is where `cargo install` already puts it, so every install
+# route lands on one absolute path and docs/scheduling.md's `$HOME/.cargo/bin/cclogger`
+# stays correct whichever one you used. The directory is created if you have no Rust.
+install-path = "CARGO_HOME"
+# Where to host releases
+hosting = "github"
+# Whether to install an updater program
+install-updater = false

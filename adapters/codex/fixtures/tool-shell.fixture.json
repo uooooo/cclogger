@@ -1,0 +1,55 @@
+{
+  "description": "Codex shell tool completion → tool.finished. Includes a locally-retained traceparent.",
+  "exercises": [
+    "canonical tool.finished shape",
+    "traceparent kept as local correlation evidence only",
+    "duration timing for the agent_execution clock"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "hook",
+    "records": [
+      {
+        "hook": "tool.after",
+        "thread_id": "cx-2xq",
+        "turn_id": "cx-turn-91m",
+        "item": { "type": "shell", "status": "completed", "duration_ms": 842 },
+        "ts": "2026-07-20T03:14:15.926Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9201-7201-8b11-0000c0de0011",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_2XQ/turn/trn_91M/tool/tol_4CJ",
+      "time": "2026-07-20T03:14:15.926Z",
+      "datacontenttype": "application/json",
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqT1",
+      "cclogobservedat": "2026-07-20T03:14:15.960Z",
+      "cclogmonotonicns": 81855926000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|tol_4CJ|tool.finished|2026-07-20T03:14:15.926Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 842,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null
+      }
+    }
+  ]
+}

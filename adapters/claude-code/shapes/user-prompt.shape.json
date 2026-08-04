@@ -1,0 +1,171 @@
+{
+  "vendor": "claude-code",
+  "variant": "user-prompt-and-tool",
+  "description": "Baseline human prompt, assistant reply carrying tool_use, and the tool result that arrives as a type=user record with toolUseResult.",
+  "records": [
+    {
+      "type": "user",
+      "uuid": "44444444-4444-4444-8444-444444444444",
+      "sessionId": "bbbbbbbb-2222-4222-8222-222222222222",
+      "timestamp": "2026-07-20T02:00:00.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "gitBranch": "feature/x",
+      "isSidechain": false,
+      "isMeta": false,
+      "promptSource": "user",
+      "userType": "external",
+      "version": "2.0.0",
+      "message": { "role": "user", "content": "SYNTHETIC prompt" }
+    },
+    {
+      "type": "assistant",
+      "uuid": "55555555-5555-4555-8555-555555555555",
+      "parentUuid": "44444444-4444-4444-8444-444444444444",
+      "sessionId": "bbbbbbbb-2222-4222-8222-222222222222",
+      "timestamp": "2026-07-20T02:00:12.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "gitBranch": "feature/x",
+      "isSidechain": false,
+      "version": "2.0.0",
+      "message": {
+        "role": "assistant",
+        "content": [
+          { "type": "text", "text": "SYNTHETIC plan" },
+          { "type": "tool_use", "id": "toolu_synthetic1", "name": "Bash", "input": { "command": "SYNTHETIC" } }
+        ],
+        "usage": { "input_tokens": 900, "output_tokens": 210 }
+      }
+    },
+    {
+      "type": "user",
+      "uuid": "66666666-6666-4666-8666-666666666666",
+      "parentUuid": "55555555-5555-4555-8555-555555555555",
+      "sessionId": "bbbbbbbb-2222-4222-8222-222222222222",
+      "timestamp": "2026-07-20T02:00:19.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "isSidechain": false,
+      "isMeta": true,
+      "version": "2.0.0",
+      "toolUseResult": { "stdout": "SYNTHETIC", "exit_code": 0 },
+      "message": { "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "toolu_synthetic1" }] }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4f1-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_ABCD",
+      "time": "2026-07-20T02:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "44444444-4444-4444-8444-444444444444",
+      "cclogobservedat": "2026-07-20T02:00:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_ABCD|prompt.submitted|44444444-4444-4444-8444-444444444444",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f1-0002-7002-8002-000000000002",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.response.completed.v1",
+      "subject": "session/ses_ABCD",
+      "time": "2026-07-20T02:00:12.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "55555555-5555-4555-8555-555555555555",
+      "cclogobservedat": "2026-07-20T02:00:12.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_ABCD|response.completed|55555555-5555-4555-8555-555555555555",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "outcome": "succeeded",
+        "response_tokens": "100-999",
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f1-0003-7003-8003-000000000003",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.started.v1",
+      "subject": "session/ses_ABCD/tool/tol_0001",
+      "time": "2026-07-20T02:00:12.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "55555555-5555-4555-8555-555555555555",
+      "cclogobservedat": "2026-07-20T02:00:12.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_ABCD|tool.started|tol_0001",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "tool_family": "shell",
+        "workspace_ref": "wsp_XYZ1",
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f1-0004-7004-8004-000000000004",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_ABCD/tool/tol_0001",
+      "time": "2026-07-20T02:00:19.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "66666666-6666-4666-8666-666666666666",
+      "cclogobservedat": "2026-07-20T02:00:19.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_ABCD|tool.finished|tol_0001",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 7000,
+        "workspace_ref": "wsp_XYZ1",
+        "content_ref": null
+      }
+    }
+  ]
+}

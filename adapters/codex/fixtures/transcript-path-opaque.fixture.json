@@ -1,0 +1,56 @@
+{
+  "description": "A Codex hook payload carries a transcript_path (an absolute path in a non-stable format). The adapter keeps it ONLY as an opaque local source-record reference; the path itself never enters the canonical observation, and no transcript content is copied (content_ref stays null).",
+  "exercises": [
+    "transcript_path treated as a locator, not a stable API",
+    "absolute path in source is dropped from the canonical row",
+    "metadata-only: no content copied into the ledger"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "hook",
+    "note": "source.transcript_path below is intentionally an absolute path; it must NOT appear in expected[].",
+    "records": [
+      {
+        "hook": "tool.after",
+        "thread_id": "cx-2xq",
+        "turn_id": "cx-turn-91m",
+        "transcript_path": "/work/acme-web/.codex/sessions/2026-07-20/thread-cx-2xq.jsonl",
+        "item": { "type": "shell", "status": "completed", "duration_ms": 1203 },
+        "ts": "2026-07-20T03:16:40.000Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9401-7401-8b31-0000c0de0031",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_2XQ/turn/trn_91M/tool/tol_88C",
+      "time": "2026-07-20T03:16:40.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqLoc7",
+      "cclogobservedat": "2026-07-20T03:16:40.040Z",
+      "cclogmonotonicns": 82000000000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|tol_88C|tool.finished|2026-07-20T03:16:40.000Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 1203,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null
+      }
+    }
+  ]
+}

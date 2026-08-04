@@ -1,0 +1,85 @@
+{
+  "vendor": "claude-code",
+  "variant": "resume-duplicate",
+  "description": "Resuming a session re-emits earlier records with identical uuid into a second file. Exact dedupe must collapse them; the two files are otherwise independent.",
+  "records": [
+    {
+      "type": "user",
+      "uuid": "77777777-7777-4777-8777-777777777777",
+      "sessionId": "cccccccc-3333-4333-8333-333333333333",
+      "timestamp": "2026-07-20T03:00:00.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "isSidechain": false,
+      "isMeta": false,
+      "version": "2.0.0",
+      "message": { "role": "user", "content": "SYNTHETIC prompt" }
+    },
+    {
+      "type": "user",
+      "uuid": "77777777-7777-4777-8777-777777777777",
+      "sessionId": "cccccccc-3333-4333-8333-333333333333",
+      "timestamp": "2026-07-20T03:00:00.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "isSidechain": false,
+      "isMeta": false,
+      "version": "2.0.0",
+      "message": { "role": "user", "content": "SYNTHETIC prompt" }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4f3-0001-7001-8001-000000000021",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_DUPE",
+      "time": "2026-07-20T03:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "77777777-7777-4777-8777-777777777777",
+      "cclogobservedat": "2026-07-20T03:00:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_DUPE|prompt.submitted|77777777-7777-4777-8777-777777777777",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f3-0002-7002-8002-000000000022",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_DUPE",
+      "time": "2026-07-20T03:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "77777777-7777-4777-8777-777777777777",
+      "cclogobservedat": "2026-07-25T09:00:00.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_DUPE|prompt.submitted|77777777-7777-4777-8777-777777777777",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "content_ref": null
+      }
+    }
+  ]
+}

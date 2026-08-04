@@ -1,0 +1,17 @@
+{
+  "vendor": "codex",
+  "variant": "message-without-stable-id",
+  "description": "Some response_item messages carry only content/role/type. These have no stable id, so dedupe must fall back to the deterministic tuple.",
+  "records": [
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:01:00.000Z",
+      "payload": { "type": "message", "role": "user", "content": "SYNTHETIC prompt" }
+    },
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:01:02.000Z",
+      "payload": { "type": "token_count", "info": { "total_tokens": 1234 }, "rate_limits": {} }
+    }
+  ]
+}

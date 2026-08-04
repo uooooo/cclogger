@@ -1,0 +1,58 @@
+{
+  "description": "A git commit observed by the git adapter → commit.observed. Commit is evidence, not a session child; linking it to a session is a separate claim.",
+  "exercises": [
+    "artifact evidence with opaque repository_ref",
+    "changed-path count and bucketed line counts, no diff content",
+    "message kept out of the ledger (message_ref null at t1)",
+    "the sha reaches the row only as a pseudonym, and (repository, sha) is the identity: one sha can sit in several repositories",
+    "no workspace ref: `git log` cannot say which worktree a commit was made from, and absence stays absent",
+    "no author: only the person's own commits are collected at all, so who is not something the row has to carry"
+  ],
+  "source": {
+    "adapter": "git",
+    "channel": "git-log",
+    "records": [
+      {
+        "repository": "github.com/acme/api",
+        "commit": "9f3ac1e",
+        "author_time": "2026-07-20T03:20:05.000Z",
+        "files_changed": 4,
+        "insertions": 137,
+        "deletions": 22
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9601-7601-8c01-0000900d0001",
+      "source": "cclog://device/dev_7N2/adapter/git",
+      "type": "dev.cclog.commit.observed.v1",
+      "subject": "artifact/commit/cmt_9F3A",
+      "time": "2026-07-20T03:20:05.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "git",
+      "cclogsourceversion": "git-log/1",
+      "cclogadapterversion": "git@0.0.0",
+      "cclogsourcerecordref": "src_git9f3a",
+      "cclogobservedat": "2026-07-20T03:20:06.000Z",
+      "cclogmonotonicns": 82200000000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "git|dev_7N2|rep_ACME|commit.observed|cmt_9F3A",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "repository_ref": "rep_ACME",
+        "changed_paths_count": 4,
+        "insertions_bucket": "100-999",
+        "deletions_bucket": "10-99",
+        "message_ref": null
+      }
+    }
+  ]
+}

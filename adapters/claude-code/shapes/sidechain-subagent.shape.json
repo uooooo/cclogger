@@ -1,0 +1,109 @@
+{
+  "vendor": "claude-code",
+  "variant": "sidechain-subagent",
+  "description": "Subagent turns carry type=user records that were written by the agent, not the human. isSidechain distinguishes them; they must not count as human prompts. The sidechain assistant record still produces a response.completed observation -- sidechain activity is agent-execution evidence, just not human signal.",
+  "records": [
+    {
+      "type": "user",
+      "uuid": "11111111-1111-4111-8111-111111111111",
+      "parentUuid": null,
+      "sessionId": "aaaaaaaa-1111-4111-8111-111111111111",
+      "timestamp": "2026-07-20T01:00:00.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "gitBranch": "main",
+      "isSidechain": false,
+      "isMeta": false,
+      "userType": "external",
+      "version": "2.0.0",
+      "message": { "role": "user", "content": "SYNTHETIC human prompt" }
+    },
+    {
+      "type": "user",
+      "uuid": "22222222-2222-4222-8222-222222222222",
+      "parentUuid": "11111111-1111-4111-8111-111111111111",
+      "sessionId": "aaaaaaaa-1111-4111-8111-111111111111",
+      "timestamp": "2026-07-20T01:00:30.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "gitBranch": "main",
+      "isSidechain": true,
+      "isMeta": false,
+      "userType": "external",
+      "version": "2.0.0",
+      "message": { "role": "user", "content": "SYNTHETIC agent-authored subagent prompt" }
+    },
+    {
+      "type": "assistant",
+      "uuid": "33333333-3333-4333-8333-333333333333",
+      "parentUuid": "22222222-2222-4222-8222-222222222222",
+      "sessionId": "aaaaaaaa-1111-4111-8111-111111111111",
+      "timestamp": "2026-07-20T01:00:45.000Z",
+      "cwd": "/Users/dev/ghq/github.com/acme/api",
+      "gitBranch": "main",
+      "isSidechain": true,
+      "version": "2.0.0",
+      "message": {
+        "role": "assistant",
+        "content": [{ "type": "text", "text": "SYNTHETIC assistant text" }],
+        "usage": { "input_tokens": 120, "output_tokens": 40 }
+      }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0001-7001-8001-000000000011",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_SIDE",
+      "time": "2026-07-20T01:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "11111111-1111-4111-8111-111111111111",
+      "cclogobservedat": "2026-07-20T01:00:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_SIDE|prompt.submitted|11111111-1111-4111-8111-111111111111",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0002-7002-8002-000000000012",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.response.completed.v1",
+      "subject": "session/ses_SIDE",
+      "time": "2026-07-20T01:00:45.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "33333333-3333-4333-8333-333333333333",
+      "cclogobservedat": "2026-07-20T01:00:45.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_SIDE|response.completed|33333333-3333-4333-8333-333333333333",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": null,
+      "data": {
+        "outcome": "succeeded",
+        "response_tokens": "10-99",
+        "content_ref": null
+      }
+    }
+  ]
+}

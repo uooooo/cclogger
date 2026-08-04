@@ -1,0 +1,141 @@
+{
+  "description": "The four ways the historical importer refuses to drop a snapshot line it cannot turn into an observation: an unmapped record kind (with and without a timestamp of its own), a record of a mapped kind that is missing a field that kind requires, and a line that is not JSON at all. Each becomes a dev.cclog.source.gap.v1 marker instead of vanishing. This is by far the highest-volume event class the importer emits, so its exact shape is pinned here rather than left to a hand check.",
+  "exercises": [
+    "integrity event (source.gap) as produced by the historical importer, not the collector",
+    "reason distinguishes unmapped_kind / missing_field / parse_error",
+    "time_basis distinguishes real activity time from archive-acquisition time",
+    "detail is a short validated label, never source content",
+    "marker identity is snapshot digest + line number, so a re-run collapses onto it"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "historical-import",
+    "snapshot_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "acquired_at": "2026-07-31T00:00:00Z",
+    "device": "dev_7N2",
+    "lines": [
+      "{\"type\":\"mode\",\"sessionId\":\"bbbbbbbb-2222-4222-8222-222222222222\",\"timestamp\":\"2026-07-20T02:00:00.000Z\",\"mode\":\"SYNTHETIC\"}",
+      "{\"type\":\"file-history-snapshot\",\"sessionId\":\"bbbbbbbb-2222-4222-8222-222222222222\",\"messageId\":\"SYNTHETIC\"}",
+      "{\"type\":\"user\",\"uuid\":\"44444444-4444-4444-8444-444444444444\",\"sessionId\":\"bbbbbbbb-2222-4222-8222-222222222222\",\"message\":{\"role\":\"user\",\"content\":\"SYNTHETIC prompt\"}}",
+      "{\"type\":\"user\",\"uuid\":\"5555"
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "source/gap/line:1",
+      "time": "2026-07-20T02:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|source.gap|sha256:0000000000000000000000000000000000000000000000000000000000000000|line:1",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "unmapped_kind",
+        "detail": "mode",
+        "time_basis": "occurred_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0002-7002-8002-000000000002",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "source/gap/line:2",
+      "time": "2026-07-31T00:00:00Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|source.gap|sha256:0000000000000000000000000000000000000000000000000000000000000000|line:2",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "unmapped_kind",
+        "detail": "file-history-snapshot",
+        "time_basis": "acquired_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0003-7003-8003-000000000003",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "source/gap/line:3",
+      "time": "2026-07-31T00:00:00Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "line:3",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|source.gap|sha256:0000000000000000000000000000000000000000000000000000000000000000|line:3",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "missing_field",
+        "detail": "timestamp",
+        "time_basis": "acquired_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0004-7004-8004-000000000004",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "source/gap/line:4",
+      "time": "2026-07-31T00:00:00Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-transcript/1",
+      "cclogadapterversion": "claude-code-history/0.0.0",
+      "cclogsourcerecordref": "line:4",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|source.gap|sha256:0000000000000000000000000000000000000000000000000000000000000000|line:4",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "parse_error",
+        "detail": null,
+        "time_basis": "acquired_at"
+      }
+    }
+  ]
+}

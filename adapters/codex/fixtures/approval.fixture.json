@@ -1,0 +1,74 @@
+{
+  "description": "Codex approval request and its resolution → approval.requested / approval.resolved observations.",
+  "exercises": [
+    "approval interaction lifecycle",
+    "decision recorded as enum, not free text",
+    "no command body on the t1 row"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "hook",
+    "records": [
+      { "hook": "approval.request", "thread_id": "cx-2xq", "kind": "command", "ts": "2026-07-20T03:15:02.000Z" },
+      { "hook": "approval.resolve", "thread_id": "cx-2xq", "kind": "command", "decision": "approved", "ts": "2026-07-20T03:15:09.300Z" }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9301-7301-8b21-0000c0de0021",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.approval.requested.v1",
+      "subject": "session/ses_2XQ/turn/trn_91M/approval/apr_11",
+      "time": "2026-07-20T03:15:02.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqAr",
+      "cclogobservedat": "2026-07-20T03:15:02.040Z",
+      "cclogmonotonicns": 81902000000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|apr_11|approval.requested|2026-07-20T03:15:02.000Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "data": {
+        "approval_kind": "command",
+        "decision": "pending"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9302-7302-9b22-0000c0de0022",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.approval.resolved.v1",
+      "subject": "session/ses_2XQ/turn/trn_91M/approval/apr_11",
+      "time": "2026-07-20T03:15:09.300Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqAx",
+      "cclogobservedat": "2026-07-20T03:15:09.340Z",
+      "cclogmonotonicns": 81909300000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|apr_11|approval.resolved|2026-07-20T03:15:09.300Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "data": {
+        "approval_kind": "command",
+        "decision": "approved"
+      }
+    }
+  ]
+}

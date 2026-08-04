@@ -1,0 +1,36 @@
+# OS
+.DS_Store
+
+# Local data / generated artifacts (the cclog store itself, exports, etc.)
+*.db
+*.db-wal
+*.db-shm
+*.duckdb
+/data/
+/out/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Editor
+.vscode/
+.idea/
+
+# Worktrees (per global convention: worktrees live under a gitignored .worktrees/)
+/.worktrees/
+
+# Toolchain-specific ignores added when the runtime is chosen (uv / bun).
+
+# Node / bun (Phase 0 conformance harness)
+node_modules/
+bun.lockb
+*.tsbuildinfo
+
+# Rust
+/target/
+**/*.rs.bk
+
+# subagent-driven-development の作業スクラッチ（plan ごとの進捗台帳・briefs・review package）
+.superpowers/

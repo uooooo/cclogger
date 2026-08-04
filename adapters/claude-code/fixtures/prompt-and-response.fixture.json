@@ -1,0 +1,91 @@
+{
+  "description": "Claude Code UserPromptSubmit + Stop → prompt / response observations (metadata-only), read from the spool `cclogger hook` writes.",
+  "exercises": [
+    "human_attention evidence (prompt.submitted)",
+    "agent_execution / outcome evidence (response.completed)",
+    "content stays local: the prompt text never reaches the spool, and content_ref is null at t1",
+    "prompt_id is what correlates the two halves of a turn",
+    "no count bucket: a hook payload carries no token count, so the field is absent rather than \"0\""
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "hook-spool",
+    "records": [
+      {
+        "v": 1,
+        "hook_event_name": "UserPromptSubmit",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-01",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:01:00.100Z"
+      },
+      {
+        "v": 1,
+        "hook_event_name": "Stop",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-01",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:01:47.900Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8c01-7011-8a11-0000cc9d2f11",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_9D2F/turn/trn_01",
+      "time": "2026-07-20T03:01:00.100Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T03:01:00.140Z",
+      "cclogmonotonicns": 81110099000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|trn_01|prompt.submitted|2026-07-20T03:01:00.100Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8c02-7012-9a12-0000cc9d2f12",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.response.completed.v1",
+      "subject": "session/ses_9D2F/turn/trn_01",
+      "time": "2026-07-20T03:01:47.900Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T03:01:47.940Z",
+      "cclogmonotonicns": 81157899000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|trn_01|response.completed|2026-07-20T03:01:47.900Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "outcome": "succeeded",
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    }
+  ]
+}

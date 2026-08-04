@@ -1,0 +1,82 @@
+{
+  "description": "The same tool.finished action arrives from both the Claude Code hook and OTLP. The two observations are kept (source records not discarded) and bundled into one correlation cluster; the second is marked possible_duplicate rather than silently merged.",
+  "exercises": [
+    "multi-source arrival of one real action",
+    "correlation_cluster grouping",
+    "integrity_state = possible_duplicate (no destructive merge)"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channels": ["hook", "otlp"],
+    "records": [
+      { "channel": "hook", "hook_event_name": "PostToolUse", "session_id": "cc-9d2f", "tool_name": "Bash", "ts": "2026-07-20T03:05:00.500Z" },
+      { "channel": "otlp", "span_name": "tool.execute", "attributes": { "session.id": "cc-9d2f", "tool.name": "Bash" }, "end_time": "2026-07-20T03:05:00.505Z" }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8e01-7031-8a31-0000cc9d2f31",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_9D2F/turn/trn_03/tool/tol_7AB",
+      "time": "2026-07-20T03:05:00.500Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "src_cc9d2fD1",
+      "cclogobservedat": "2026-07-20T03:05:00.540Z",
+      "cclogmonotonicns": 81400500000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|tol_7AB|tool.finished|2026-07-20T03:05:00.500Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "cclogcorrelationcluster": "cor_7AB",
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 611,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8e02-7032-9a32-0000cc9d2f32",
+      "source": "cclog://device/dev_7N2/adapter/otlp",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_9D2F/turn/trn_03/tool/tol_7AB",
+      "time": "2026-07-20T03:05:00.505Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "otlp",
+      "cclogsourceversion": "claude-code-otlp/1",
+      "cclogadapterversion": "otlp@0.0.0",
+      "cclogsourcerecordref": "src_otlpD2",
+      "cclogobservedat": "2026-07-20T03:05:00.560Z",
+      "cclogmonotonicns": 81400505000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "otlp|dev_7N2|ses_9D2F|tol_7AB|tool.finished|2026-07-20T03:05:00.505Z",
+      "cclogintegritystate": "possible_duplicate",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "cclogcorrelationcluster": "cor_7AB",
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 611,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+  "description": "The collector restarted mid-session, leaving a window where events could not be captured. This is recorded as an explicit source.gap observation so coverage can distinguish 'no work' from 'not observed'.",
+  "exercises": [
+    "integrity event (source.gap)",
+    "coverage != zero-activity",
+    "loss made visible rather than silently dropped"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "collector",
+    "records": [
+      { "marker": "spool_gap", "session_id": "cc-9d2f", "from": "2026-07-20T03:10:00Z", "to": "2026-07-20T03:12:30Z", "cause": "collector_restart" }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8f01-7041-8a41-0000cc9d2f41",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "device/dev_7N2/session/ses_9D2F",
+      "time": "2026-07-20T03:12:30.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": null,
+      "cclogobservedat": "2026-07-20T03:12:30.400Z",
+      "cclogmonotonicns": 81750000000,
+      "cclogbootid": "boot_Qk2",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|source.gap|2026-07-20T03:10:00Z|2026-07-20T03:12:30Z",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "collector_restart",
+        "detail": null
+      }
+    }
+  ]
+}

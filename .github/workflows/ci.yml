@@ -1,0 +1,127 @@
+# The gate, run by a machine instead of by someone remembering to.
+#
+# These are the same commands docs/releasing.md tells you to run before tagging. Until
+# this file existed they were the only pre-release check there was, and running them was
+# a habit rather than a rule: release.yml builds and does not test, so a pushed tag
+# shipped whatever happened to be on the commit.
+#
+# Hand-written, unlike release.yml -- `dist init` regenerates that one and would discard
+# anything added to it. Edit this file directly.
+name: CI
+
+on:
+  push:
+    # main is what gets tagged, so main is what must always be green. Other branches are
+    # covered by the pull_request trigger below, which is where they are read anyway;
+    # listing them here too would only run the same commit twice.
+    branches: [main]
+  pull_request:
+
+# A superseded push or PR update has nothing left to say. Keep the newest run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+# Nothing here writes anything.
+permissions:
+  contents: read
+
+env:
+  # The floor declared by `rust-version` in the root Cargo.toml, pinned rather than
+  # inherited from the runner so the gate runs on the oldest toolchain a user may have
+  # instead of on whatever shipped this month. The `lint` job fails if the two drift
+  # apart. Raising it is a user-visible change: the README says which Rust you need.
+  RUST_TOOLCHAIN: "1.88"
+
+jobs:
+  test:
+    # macOS as well as Linux. The archive holds itself at 0600 under a 0700 directory
+    # through `std::os::unix`, and the day-cutting tests drive a real process with a `TZ`
+    # set -- both are platform behaviour, and both platforms are shipped
+    # (dist-workspace.toml). Windows is absent on purpose; see the same file.
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # One platform failing is a fact about that platform, and knowing whether the other
+      # also failed is most of the diagnosis. Let both finish.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      # rustup, not a toolchain action: it is already on both runner images, and this
+      # workflow then depends on nothing outside actions/ and the bun vendor's own action.
+      # `--profile default` rather than minimal-plus-components -- some rustup versions
+      # drop cargo from the set when explicit `--component` flags are given.
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile default --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          rustc --version
+
+      # --no-fail-fast: one failing test should not hide the others. The report is worth
+      # more than the seconds saved by stopping at the first.
+      - name: cargo test
+        run: cargo test --workspace --no-fail-fast
+
+  lint:
+    # Platform-independent, so once is enough.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      # The pin above is a copy of a value that lives in Cargo.toml. Copies drift, and a
+      # drifted one here would silently stop testing the floor it claims to test.
+      - name: Pinned toolchain matches the manifest floor
+        run: |
+          declared="$(grep -m1 '^rust-version' Cargo.toml | cut -d'"' -f2)"
+          if [ "$declared" != "$RUST_TOOLCHAIN" ]; then
+            echo "Cargo.toml declares rust-version = \"$declared\"," >&2
+            echo "but .github/workflows/ci.yml pins $RUST_TOOLCHAIN." >&2
+            echo "They have to agree -- the pin exists to run the gate on the floor." >&2
+            exit 1
+          fi
+          echo "rust-version = $declared, pinned toolchain = $RUST_TOOLCHAIN"
+
+      # The default profile carries clippy and rustfmt; see the note in `test`.
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile default --no-self-update
+          rustup default "$RUST_TOOLCHAIN"
+          cargo clippy --version
+          cargo fmt --version
+
+      - name: cargo fmt
+        run: cargo fmt --check
+
+      # --all-targets so tests and benches are linted too, not just the shipped code.
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  conformance:
+    # Every synthetic fixture against the canonical schema, plus the shape fixtures.
+    # No Rust involved: this is what keeps adapters/ honest independently of the crates
+    # that read it. See tools/conformance/README.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: tools/conformance
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      - name: Validate fixtures against the schema
+        run: bun run validate
+
+      - name: Validate the shape fixtures
+        run: bun run validate:shapes

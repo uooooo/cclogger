@@ -1,0 +1,59 @@
+{
+  "description": "Codex OTLP span export → tool.finished, as a complementary timing source alongside the hook channel.",
+  "exercises": [
+    "OTLP as a duplicate/complementary source_kind",
+    "trace context retained locally for correlation",
+    "same canonical shape regardless of source channel"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "otlp",
+    "records": [
+      {
+        "resource": { "service.name": "codex" },
+        "span": {
+          "name": "tool.execute",
+          "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "span_id": "b7ad6b7169203331",
+          "attributes": { "thread.id": "cx-2xq", "tool.type": "shell" },
+          "end_time": "2026-07-20T03:18:20.700Z",
+          "duration_ms": 705
+        }
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9501-7501-8b41-0000c0de0041",
+      "source": "cclog://device/dev_7N2/adapter/otlp",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_2XQ/turn/trn_92A/tool/tol_9DE",
+      "time": "2026-07-20T03:18:20.700Z",
+      "datacontenttype": "application/json",
+      "traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-b7ad6b7169203331-01",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "otlp",
+      "cclogsourceversion": "codex-otlp/1",
+      "cclogadapterversion": "otlp@0.0.0",
+      "cclogsourcerecordref": "src_otlpCx1",
+      "cclogobservedat": "2026-07-20T03:18:20.740Z",
+      "cclogmonotonicns": 82100700000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "otlp|dev_7N2|ses_2XQ|tol_9DE|tool.finished|2026-07-20T03:18:20.700Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": null,
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 705,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null
+      }
+    }
+  ]
+}

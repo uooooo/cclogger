@@ -1,0 +1,138 @@
+{
+  "description": "A forked Codex rollout, as the historical importer reads it. A fork under ForkPersistence::Copied re-writes the parent's entire history into the child's file in one call, and Codex stamps every record it serializes with the write time -- so the first three lines here share one millisecond. Line 1 is the child's OWN session_meta, written at the moment the fork happened, so its timestamp is a true event time and it carries no time_basis. Lines 2 and 3 are the parent's records, copied in behind it, whose original times are no longer recoverable: they are marked copied_at. Line 4 is the child's own live turn, two hours later. All four are imported; the marking is what keeps two of them off every clock without losing them.",
+  "exercises": [
+    "copied history is marked, never dropped -- a copied human prompt still reaches the ledger",
+    "time_basis = copied_at on every observation derived from a copied record",
+    "the rule is upstream's own: a session_meta whose payload.id is not the file's canonical thread id",
+    "the fork's own session_meta is live: it is when the fork happened, not a copy of anything",
+    "the child's own live turn carries no time_basis, because its timestamp is when it happened",
+    "an embedded parent session_meta names a session this file registers nothing for, so it gaps -- and the gap is copied-dated too"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "historical-import",
+    "snapshot_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "acquired_at": "2026-07-31T00:00:00Z",
+    "device": "dev_7N2",
+    "home": "/Users/dev",
+    "lines": [
+      "{\"payload\":{\"cli_version\":\"0.144.2\",\"cwd\":\"/Users/dev/ghq/github.com/acme/api\",\"forked_from_id\":\"44444444-4444-4444-8444-444444444444\",\"id\":\"33333333-3333-4333-8333-333333333333\",\"originator\":\"cli\",\"session_id\":\"33333333-3333-4333-8333-333333333333\",\"source\":\"interactive\"},\"timestamp\":\"2026-07-20T05:00:00.000Z\",\"type\":\"session_meta\"}",
+      "{\"payload\":{\"cli_version\":\"0.144.2\",\"cwd\":\"/Users/dev/ghq/github.com/acme/api\",\"id\":\"44444444-4444-4444-8444-444444444444\",\"originator\":\"cli\",\"session_id\":\"44444444-4444-4444-8444-444444444444\",\"source\":\"interactive\"},\"timestamp\":\"2026-07-20T05:00:00.000Z\",\"type\":\"session_meta\"}",
+      "{\"payload\":{\"client_id\":\"SYNTHETIC-client-a\",\"local_images\":[],\"message\":\"SYNTHETIC copied prompt\",\"type\":\"user_message\"},\"timestamp\":\"2026-07-20T05:00:00.000Z\",\"type\":\"event_msg\"}",
+      "{\"payload\":{\"client_id\":\"SYNTHETIC-client-a\",\"local_images\":[],\"message\":\"SYNTHETIC live prompt\",\"type\":\"user_message\"},\"timestamp\":\"2026-07-20T07:00:00.000Z\",\"type\":\"event_msg\"}"
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.session.started.v1",
+      "subject": "session/ses_f6222a1106eefe4f6b25",
+      "time": "2026-07-20T05:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_f6222a1106eefe4f6b25|session.started",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_e1dcaa3496b93562cbcd",
+      "cclogrepositoryref": "rep_e1dcaa3496b93562cbcd",
+      "data": {
+        "session_kind": "interactive"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0002-7002-8002-000000000002",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.source.gap.v1",
+      "subject": "source/gap/line:2",
+      "time": "2026-07-20T05:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|source.gap|sha256:1111111111111111111111111111111111111111111111111111111111111111|line:2",
+      "cclogintegritystate": "gap",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "missing_field",
+        "detail": "session_id",
+        "time_basis": "copied_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0003-7003-8003-000000000003",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_f6222a1106eefe4f6b25",
+      "time": "2026-07-20T05:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:3",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_f6222a1106eefe4f6b25|prompt.submitted|umsg_0f21ef6ce5e540844f8f",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_e1dcaa3496b93562cbcd",
+      "cclogrepositoryref": "rep_e1dcaa3496b93562cbcd",
+      "data": {
+        "content_ref": null,
+        "time_basis": "copied_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4f2-0004-7004-8004-000000000004",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_f6222a1106eefe4f6b25",
+      "time": "2026-07-20T07:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:4",
+      "cclogobservedat": "2026-07-31T00:00:05.000Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_f6222a1106eefe4f6b25|prompt.submitted|umsg_418785250624df313586",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_e1dcaa3496b93562cbcd",
+      "cclogrepositoryref": "rep_e1dcaa3496b93562cbcd",
+      "data": {
+        "content_ref": null
+      }
+    }
+  ]
+}

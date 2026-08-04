@@ -1,0 +1,9 @@
+{
+  "name": "cclog-inventory",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "inventory": "bun run inventory.ts",
+    "test": "bun test"
+  }
+}

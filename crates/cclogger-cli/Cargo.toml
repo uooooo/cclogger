@@ -1,0 +1,41 @@
+[package]
+name = "cclogger-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+# Carried into the npm package's description, so it is written for someone reading a
+# registry listing rather than a Cargo.toml.
+description = "A local-first work ledger for AI-assisted coding: reconstructs what you worked on, and for how long, from the transcripts Claude Code and Codex already write. Nothing leaves your machine."
+
+[[bin]]
+name = "cclogger"
+path = "src/main.rs"
+
+# Distribution (`dist`, see dist-workspace.toml).
+[package.metadata.dist]
+# `publish = false` would otherwise hide this package from dist entirely. It stays
+# false -- this is not a crates.io release, only a binary one.
+dist = true
+# The npm package is `cclogger`, not the Cargo package name: `cclogger-cli` is already
+# taken on npm by an unrelated project, and `cclogger` is the published name. ADR-0003.
+npm-package = "cclogger"
+
+[dependencies]
+cclogger-archive = { workspace = true }
+cclogger-adapters = { workspace = true }
+cclogger-domain = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+
+# Test-only, and not a new dependency to this project: `cclogger-archive` already
+# depends on the same workspace-pinned rusqlite, so nothing new enters the tree and
+# nothing extra ships in the binary. It is here so a test can put a `ledger.db` into
+# an out-of-date schema shape -- the one state `--dry-run` must refuse to upgrade --
+# which cannot be reached through the `Ledger` API, since opening one is exactly the
+# write being guarded against.
+[dev-dependencies]
+rusqlite = { workspace = true }

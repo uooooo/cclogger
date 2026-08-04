@@ -1,0 +1,100 @@
+{
+  "description": "Claude Code PreToolUse + PostToolUse (Bash) → tool started / finished observations, read from the spool `cclogger hook` writes.",
+  "exercises": [
+    "tool lifecycle → agent_execution interval",
+    "tool_family normalization (Bash → shell)",
+    "workspace_ref pseudonym; no command text on the t1 row",
+    "PostToolUse.duration_ms is the vendor's own measurement, and excludes time spent in permission prompts"
+  ],
+  "source": {
+    "adapter": "claude-code",
+    "channel": "hook-spool",
+    "records": [
+      {
+        "v": 1,
+        "hook_event_name": "PreToolUse",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-02",
+        "tool_use_id": "cc-tool-4cj",
+        "tool_name": "Bash",
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:02:10.000Z"
+      },
+      {
+        "v": 1,
+        "hook_event_name": "PostToolUse",
+        "session_id": "cc-9d2f",
+        "prompt_id": "cc-prompt-02",
+        "tool_use_id": "cc-tool-4cj",
+        "tool_name": "Bash",
+        "duration_ms": 842,
+        "cwd": "/work/acme-web",
+        "received_at": "2026-07-20T03:02:10.842Z"
+      }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8d01-7021-8a21-0000cc9d2f21",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.started.v1",
+      "subject": "session/ses_9D2F/turn/trn_02/tool/tol_4CJ",
+      "time": "2026-07-20T03:02:10.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-07-20T03:02:10.030Z",
+      "cclogmonotonicns": 81230000000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|tol_4CJ|tool.started|2026-07-20T03:02:10.000Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "tool_family": "shell",
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-8d02-7022-9a22-0000cc9d2f22",
+      "source": "cclog://device/dev_7N2/adapter/claude-code",
+      "type": "dev.cclog.tool.finished.v1",
+      "subject": "session/ses_9D2F/turn/trn_02/tool/tol_4CJ",
+      "time": "2026-07-20T03:02:10.842Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "claude-code",
+      "cclogsourceversion": "claude-code-hook/1",
+      "cclogadapterversion": "claude-code@0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T03:02:10.880Z",
+      "cclogmonotonicns": 81230842000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "claude-code|dev_7N2|ses_9D2F|tol_4CJ|tool.finished|2026-07-20T03:02:10.842Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_QN5",
+      "cclogrepositoryref": "rep_A7K",
+      "data": {
+        "tool_family": "shell",
+        "outcome": "succeeded",
+        "duration_ms": 842,
+        "workspace_ref": "wsp_QN5",
+        "content_ref": null,
+        "time_basis": "received_at"
+      }
+    }
+  ]
+}

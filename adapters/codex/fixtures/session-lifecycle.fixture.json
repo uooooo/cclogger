@@ -1,0 +1,73 @@
+{
+  "description": "Codex session lifecycle hooks → session started / ended observations.",
+  "exercises": [
+    "second adapter normalizes to the same canonical lifecycle events",
+    "vendor thread/turn ids replaced by opaque refs",
+    "default-deny routing to personal"
+  ],
+  "source": {
+    "adapter": "codex",
+    "channel": "hook",
+    "records": [
+      { "hook": "session.start", "thread_id": "cx-2xq", "ts": "2026-07-20T03:10:00.000Z" },
+      { "hook": "session.end", "thread_id": "cx-2xq", "status": "completed", "ts": "2026-07-20T03:59:12.500Z" }
+    ]
+  },
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9101-7101-8b01-0000c0de0001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.session.started.v1",
+      "subject": "session/ses_2XQ",
+      "time": "2026-07-20T03:10:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqA1",
+      "cclogobservedat": "2026-07-20T03:10:00.040Z",
+      "cclogmonotonicns": 81600000000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|session.started|2026-07-20T03:10:00.000Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "session_kind": "interactive"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc4d2-9102-7102-9b02-0000c0de0002",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.session.ended.v1",
+      "subject": "session/ses_2XQ",
+      "time": "2026-07-20T03:59:12.500Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-hook/1",
+      "cclogadapterversion": "codex@0.0.0",
+      "cclogsourcerecordref": "src_cx2xqZ9",
+      "cclogobservedat": "2026-07-20T03:59:12.540Z",
+      "cclogmonotonicns": 84552500000,
+      "cclogbootid": "boot_Qk1",
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_2XQ|session.ended|2026-07-20T03:59:12.500Z",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": null,
+      "cclogrepositoryref": null,
+      "data": {
+        "reason": "completed",
+        "turn_count": "1-9"
+      }
+    }
+  ]
+}

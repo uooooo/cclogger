@@ -1,0 +1,39 @@
+{
+  "vendor": "codex",
+  "variant": "tool-call-with-stable-ids",
+  "description": "Most custom_tool_call response_items carry both id (ctc_) and call_id (call_); dedupe should prefer the stable id path when it is present. docs/source-inventory.md still classifies this record kind's stable id as none, because a minority of real instances carry only call_id (record 3 below reproduces that minority shape) — adapters must not assume id is always there.",
+  "records": [
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:00:01.000Z",
+      "payload": {
+        "type": "custom_tool_call",
+        "id": "ctc_synthetic0001",
+        "call_id": "call_synthetic0001",
+        "name": "shell",
+        "input": "SYNTHETIC",
+        "status": "completed"
+      }
+    },
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:00:03.000Z",
+      "payload": {
+        "type": "custom_tool_call_output",
+        "call_id": "call_synthetic0001",
+        "output": "SYNTHETIC"
+      }
+    },
+    {
+      "type": "response_item",
+      "timestamp": "2026-07-20T04:00:10.000Z",
+      "payload": {
+        "type": "custom_tool_call",
+        "call_id": "call_synthetic0002",
+        "name": "shell",
+        "input": "SYNTHETIC",
+        "status": "completed"
+      }
+    }
+  ]
+}
