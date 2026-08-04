@@ -1034,6 +1034,16 @@ mod tests {
     /// does. `duration` is a parameter so callers can exercise both a well-formed
     /// `{secs, nanos}` object and the malformed shapes [`mcp_duration_ms`] must turn
     /// into `null`.
+    ///
+    /// Carries `session_id: "sess-1"` even though a real `mcp_tool_call_end` never
+    /// does (like every non-`session_meta` Codex record -- see [`FILE_SESSION`]'s doc
+    /// comment). This mirrors [`user_message`]'s own factory, which makes the same
+    /// deliberate departure for the same reason: without it, `session_ref`/
+    /// `identity_refs` resolve to `None` for every record this factory builds, and a
+    /// unit test built on top of it cannot tell a real `workspace_ref`/`subject` apart
+    /// from one that silently stopped resolving. `ks()` maps `"sess-1"` to
+    /// `ses_TEST`/`wsp_TEST`/`rep_TEST`, so this makes those resolvable the same way
+    /// the golden fixture's `FILE_SESSION` fallback already does.
     fn mcp_tool_call_end(call_id: &str, duration: Value) -> Value {
         json!({
             "type": "event_msg",
@@ -1041,6 +1051,7 @@ mod tests {
             "payload": {
                 "type": "mcp_tool_call_end",
                 "call_id": call_id,
+                "session_id": "sess-1",
                 "connector_id": "conn_1",
                 "plugin_id": "plugin_1",
                 "link_id": "link_1",
@@ -1059,6 +1070,11 @@ mod tests {
 
     #[test]
     fn an_mcp_tool_call_end_becomes_one_finished_mcp_tool_event() {
+        // "call_9" is deliberately unregistered in `ks()`, so this exercises
+        // `mcp_tool_scope`'s fallback -- the branch that runs for effectively every
+        // real MCP call today (`CodexPreScan::observe` does not yet register one under
+        // `"tool"`) -- and pins every field that branch produces, not just
+        // `duration_ms`/`tool_family`.
         let record = mcp_tool_call_end("call_9", json!({ "secs": 2, "nanos": 500_000_000 }));
         let drafts = transform(&record, &ks());
         assert_eq!(drafts.len(), 1);
@@ -1067,6 +1083,40 @@ mod tests {
         assert_eq!(
             drafts[0].data["duration_ms"], 2500,
             "duration.secs * 1000 + duration.nanos / 1_000_000"
+        );
+        // This record shape carries no `success`/`status` -- the two fields
+        // `output_outcome` reads -- so the honest answer is `"unknown"`, never a
+        // hardcoded `"succeeded"`. An MCP call that reached this arm has not thereby
+        // succeeded, and a fabricated verdict here is exactly the class of mistake
+        // this project has already removed seven instances of.
+        assert_eq!(
+            drafts[0].data["outcome"], "unknown",
+            "a verdict this record shape cannot support must be reported as unknown, \
+             not assumed to be success"
+        );
+        // `workspace_ref`/`repository_ref`/`subject` all come from the same
+        // `session_ref`/`identity_refs` resolution every other Codex tool kind goes
+        // through. Pinned here so a regression that drops either (e.g. a hardcoded
+        // `(None, None)`) cannot hide behind a test record that never gave them
+        // anything to resolve.
+        assert_eq!(drafts[0].data["workspace_ref"], "wsp_TEST");
+        assert_eq!(drafts[0].repository_ref.as_deref(), Some("rep_TEST"));
+        // Reconstructed independently of `mcp_tool_scope`/`content_identity`
+        // themselves, the same way `an_object_valued_message_hashes_its_keys_in_sorted_order`
+        // pins a prompt's identity: the real `pseudonymize` primitive, over a
+        // hand-written canonical string, so a mutation that changed which fields feed
+        // the hash (or their order, or the prefix) would show up here even though
+        // nothing about the hash *output* is otherwise meaningful.
+        assert_eq!(
+            drafts[0].subject,
+            format!(
+                "session/ses_TEST/tool/{}",
+                pseudonymize(
+                    "mcpc",
+                    r#"2026-08-01T00:00:00.000Z|{"call_id":"call_9","server":"synthetic-server","tool":"synthetic_tool"}"#
+                )
+            ),
+            "the fallback identity must be built from call_id/server/tool only"
         );
     }
 
@@ -1081,7 +1131,11 @@ mod tests {
         let drafts = transform(&record, &ks());
         assert_eq!(
             drafts[0].dedupe_seed,
-            vec!["tool.finished".to_string(), "tol_TEST".to_string()],
+            vec![
+                "ses_TEST".to_string(),
+                "tool.finished".to_string(),
+                "tol_TEST".to_string()
+            ],
             "a registered call id must resolve to the same ref other tool kinds use"
         );
     }
