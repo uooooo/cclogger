@@ -122,6 +122,22 @@
 //! otherwise handles, which is RFC 3339 text. Nothing in the data flags the difference,
 //! so `codex_turn_started_at` is registered and compared verbatim, in seconds, rather
 //! than scaled to look like the millisecond fields sitting next to it.
+//!
+//! A real import against the full corpus (866k observations) surfaced what no synthetic
+//! fixture had exercised: a turn re-persisted not just within one file but across as
+//! many as five different *sessions'* own rollout files -- 11 turns this way, 745
+//! `turn.completed` observations for 724 distinct turns. [`transform_task_complete`]'s
+//! dedupe seed is `turn_id` alone, deliberately excluding `session`, for exactly this
+//! reason; see that function's own doc section for why. **What that run left open**,
+//! and what this module cannot resolve without access to the real archive: whether
+//! those five copies are literally re-persisted history that
+//! [`crate::rfc3339`]-independent classification in `cclogger-cli`'s `codex_inherited`
+//! ought to have marked `time_basis: copied_at` and did not, or something else entirely
+//! (e.g. Codex's own multi-agent model legitimately assigning one `turn_id` across a
+//! parent and its subagents). That classification lives in `cclogger-cli::import`, runs
+//! on raw file bytes before either `CodexPreScan` or this module ever sees a record, and
+//! is unrelated to this module's own logic either way -- so it is out of scope here, and
+//! is not touched by this change.
 
 use crate::{Keystore, pseudonymize};
 use cclogger_domain::{IntegrityState, ObservationDraft, PrivacyClass, SourceKind};
@@ -536,6 +552,24 @@ fn transform_mcp_tool_call(payload: &Value, time: &str, ctx: &Keystore) -> Vec<O
 /// module; `completed_at` (a *different*, epoch-seconds field) is never substituted for
 /// it, and `time_basis` is left unset for the reason every other transform here leaves
 /// it unset: absence already says "the record's own timestamp, nothing to qualify."
+///
+/// # Identity is `turn_id` alone -- deliberately not `session`
+///
+/// Every sibling transform in this module folds `session` into its dedupe seed (via
+/// [`seed`]), and this one does not, on purpose: a real import surfaced a turn
+/// re-persisted into as many as five *different* sessions' own rollout files, each
+/// resolving `codex_turn_started_at`'s `session_key` to a different `CodexPreScan` --
+/// one is rebuilt per file -- and so to a different opaque session ref. Seeding on
+/// `(session, turn_id)` the way [`transform_tool_call`] seeds on `(session, tool)`
+/// therefore does not collapse a re-persisted turn at all; it multiplies it by however
+/// many sessions it was copied into, which is exactly the 745-observations-for-724-turns
+/// defect this doc paragraph exists to keep from coming back. `turn_id` alone is
+/// sufficient identity here in a way it would not be for, say, a prompt: this event's
+/// whole payload (`duration_ms`, `time_to_first_token_ms`, `outcome`) is the vendor's
+/// own measurement of the turn, identical on every copy by construction, so collapsing
+/// purely on `turn_id` loses nothing a session-qualified key would have kept. `subject`
+/// still carries whichever session this particular draft resolved -- useful for
+/// navigation -- but it is not part of what makes two drafts the same turn.
 fn transform_task_complete(payload: &Value, time: &str, ctx: &Keystore) -> Vec<ObservationDraft> {
     let Some(turn_id) = payload.get("turn_id").and_then(Value::as_str) else {
         return Vec::new();
@@ -575,12 +609,13 @@ fn transform_task_complete(payload: &Value, time: &str, ctx: &Keystore) -> Vec<O
         workspace_ref: workspace,
         repository_ref: repository,
         correlation_cluster: None,
-        // Per-turn, not per-record: `turn_id` is the only component beyond the event
-        // name and the session, so the 998 copies real forks re-persist -- byte-identical
-        // `turn_id`, different file, sometimes a different write-time envelope
-        // `timestamp` -- collapse onto the one row already there instead of shipping the
-        // corpus's measured 2.4x duplication.
-        dedupe_seed: seed(session, "turn.completed", &trn),
+        // Per-turn, not per-record and not per-session -- see this function's "Identity
+        // is turn_id alone" doc section. `turn_id` is the only component beyond the
+        // event name, so the 998 copies real forks re-persist -- byte-identical
+        // `turn_id`, different file (sometimes a different *session*, not only a
+        // different write-time envelope `timestamp`) -- collapse onto the one row
+        // already there instead of shipping the corpus's measured 2.4x duplication.
+        dedupe_seed: vec!["turn.completed".to_string(), trn],
         data: json!({
             "outcome": outcome,
             "duration_ms": payload.get("duration_ms").and_then(Value::as_u64),
@@ -1497,5 +1532,60 @@ mod tests {
         assert_eq!(a.len(), 1);
         assert_eq!(b.len(), 1);
         assert_ne!(a[0].dedupe_seed, b[0].dedupe_seed);
+    }
+
+    /// Regression for a real-corpus finding (866k observations): a turn re-persisted
+    /// not just within one file but across as many as five *different* sessions' own
+    /// rollout files -- 11 turns this way, producing 745 `turn.completed` observations
+    /// for 724 distinct turns. `turns_re_persisted_by_a_fork_share_one_dedupe_key_even_when_the_record_differs`
+    /// above only ever exercised one *session* (both calls share `ks()`), which is
+    /// exactly the gap: `CodexPreScan` is rebuilt fresh per file, so the same turn_id
+    /// re-persisted into a second file's own rollout resolves `FILE_SESSION`/its own
+    /// `session_id` to a *different* opaque session ref there. Two separate `Keystore`s
+    /// stand in for two separate files' own pre-scans, each with `codex_turn_started_at`
+    /// registered for the same `turn_id` (as each file's own copy of `task_started`
+    /// would produce) but a different session.
+    ///
+    /// The copy's envelope `timestamp` also differs from the original's, exactly as the
+    /// sibling same-session test's does and for the same reason (a fork's copy is
+    /// stamped at the moment of the copy, not preserved from the original) -- so this
+    /// test does not rely on that one to catch a seed that smuggled a record-specific
+    /// field back in; it pins both dimensions -- session *and* record -- on its own.
+    #[test]
+    fn a_turn_re_persisted_into_a_different_session_still_shares_one_dedupe_key() {
+        let first_files_ks = Keystore::new().map("session", "sess-1", "ses_FILE_A").map(
+            "codex_turn_started_at",
+            "turn_1",
+            "1784606520",
+        );
+        let second_files_ks = Keystore::new().map("session", "sess-1", "ses_FILE_B").map(
+            "codex_turn_started_at",
+            "turn_1",
+            "1784606520",
+        );
+
+        let original = task_complete("turn_1");
+        let mut copy = original.clone();
+        copy["timestamp"] = json!("2026-08-02T00:00:00.000Z");
+        copy["payload"]["time_to_first_token_ms"] = json!(9999);
+
+        let a = transform(&original, &first_files_ks);
+        let b = transform(&copy, &second_files_ks);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        // The two drafts really did resolve different sessions -- otherwise this test
+        // would not be exercising the gap the real import found.
+        assert_ne!(
+            a[0].subject, b[0].subject,
+            "the two Keystores must actually disagree about the session, or this test \
+             proves nothing beyond the single-session case above"
+        );
+        assert_eq!(
+            a[0].dedupe_seed, b[0].dedupe_seed,
+            "identity must be per turn_id alone: a turn re-persisted into a different \
+             session (and a different write-time envelope timestamp, as a real copy's \
+             would be) must still collapse to one observation, not multiply by however \
+             many sessions carry a copy of it"
+        );
     }
 }
