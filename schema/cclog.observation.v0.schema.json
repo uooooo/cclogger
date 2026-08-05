@@ -107,6 +107,7 @@
     { "if": { "properties": { "type": { "const": "dev.cclog.session.ended.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_session_ended" } } } },
     { "if": { "properties": { "type": { "const": "dev.cclog.prompt.submitted.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_prompt_submitted" } } } },
     { "if": { "properties": { "type": { "const": "dev.cclog.response.completed.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_response_completed" } } } },
+    { "if": { "properties": { "type": { "const": "dev.cclog.turn.completed.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_turn_completed" } } } },
     { "if": { "properties": { "type": { "const": "dev.cclog.approval.requested.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_approval" } } } },
     { "if": { "properties": { "type": { "const": "dev.cclog.approval.resolved.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_approval" } } } },
     { "if": { "properties": { "type": { "const": "dev.cclog.tool.started.v1" } } }, "then": { "properties": { "data": { "$ref": "#/$defs/data_tool_started" } } } },
@@ -185,6 +186,18 @@
       "properties": {
         "outcome": { "$ref": "#/$defs/outcome" },
         "response_tokens": { "$ref": "#/$defs/count_bucket" },
+        "content_ref": { "$ref": "#/$defs/content_ref" },
+        "time_basis": { "$ref": "#/$defs/time_basis" }
+      }
+    },
+    "data_turn_completed": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["outcome", "content_ref"],
+      "properties": {
+        "outcome": { "$ref": "#/$defs/outcome" },
+        "duration_ms": { "$ref": "#/$defs/duration_ms" },
+        "time_to_first_token_ms": { "$ref": "#/$defs/duration_ms" },
         "content_ref": { "$ref": "#/$defs/content_ref" },
         "time_basis": { "$ref": "#/$defs/time_basis" }
       }

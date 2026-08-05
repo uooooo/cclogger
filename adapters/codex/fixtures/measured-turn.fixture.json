@@ -1,0 +1,59 @@
+{
+  "vendor": "codex",
+  "variant": "measured-turn",
+  "description": "One synthetic Codex transcript file: event_msg:task_started followed by its event_msg:task_complete, sharing turn_id. task_started itself produces no observation -- its whole contribution is the same-file corroboration codex_history::transform_task_complete resolves through the Keystore, exactly as a real CodexPreScan registers it (see codex_history's 'Turn duration' module doc). task_complete becomes one dev.cclog.turn.completed.v1 carrying Codex's own duration_ms and time_to_first_token_ms verbatim -- the one measurement of a turn that is not a Codex write-time, and so not recoverable any other way -- never a duration recomputed from started_at/completed_at, which are epoch seconds (not RFC 3339, not milliseconds) and appear here only to look like a real paired turn.",
+  "records": [
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:10:00.000Z",
+      "payload": {
+        "type": "task_started",
+        "turn_id": "turn_synthetic0001",
+        "started_at": 1784520600
+      }
+    },
+    {
+      "type": "event_msg",
+      "timestamp": "2026-07-20T04:10:08.000Z",
+      "payload": {
+        "type": "task_complete",
+        "turn_id": "turn_synthetic0001",
+        "duration_ms": 7850,
+        "time_to_first_token_ms": 640,
+        "completed_at": 1784520608
+      }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc50e-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.turn.completed.v1",
+      "subject": "session/ses_CDX1/turn/trn_c7ae81111d78acc70d5e",
+      "time": "2026-07-20T04:10:08.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-07-20T04:10:08.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|turn.completed|trn_c7ae81111d78acc70d5e",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "outcome": "succeeded",
+        "duration_ms": 7850,
+        "time_to_first_token_ms": 640,
+        "content_ref": null
+      }
+    }
+  ]
+}
