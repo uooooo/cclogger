@@ -1419,6 +1419,29 @@ mod tests {
         );
     }
 
+    /// `completed_at` is present on 1,666 of 1,722 real `task_complete` records, and it
+    /// is epoch SECONDS -- not RFC 3339 text, which is what the schema's `time` requires
+    /// and what every sibling Codex transform emits. `task_complete()` above never sets
+    /// it, so every other test in this module exercises this arm with `completed_at`
+    /// absent: a substitution that read `completed_at` instead of the envelope
+    /// `timestamp` would fall through `Option::None` to the same right answer by
+    /// accident on all of them, which is exactly what let this invariant go unpinned. So
+    /// `completed_at` is set here, and set to a value that differs from the envelope
+    /// timestamp, giving a substitution somewhere wrong to land.
+    #[test]
+    fn a_turns_time_is_the_records_own_envelope_timestamp_never_completed_at() {
+        let mut record = task_complete("turn_1");
+        record["payload"]["completed_at"] = json!(1_784_606_999i64);
+        let drafts = transform(&record, &ks());
+        assert_eq!(
+            drafts[0].time, "2026-08-01T00:10:00.000Z",
+            "time must be the record's own envelope timestamp, never completed_at -- \
+             substituting completed_at would emit epoch-seconds text (e.g. \
+             \"1784606999\") where the schema demands an RFC 3339 date-time, invalid \
+             output on the 1,666 of 1,722 real records that carry it"
+        );
+    }
+
     #[test]
     fn a_task_complete_without_a_same_file_task_started_produces_no_draft() {
         // "turn_9" is deliberately unregistered in `ks()` under `codex_turn_started_at`:
