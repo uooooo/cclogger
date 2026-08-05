@@ -35,7 +35,8 @@
 use crate::report::{
     AGENT_GAP_SECONDS, ATTENTION_AFTER_SECONDS, ATTENTION_BEFORE_SECONDS, COMMIT_EVENT_TYPE,
     ConfigStatus, DayWindow, GAP_EVENT_TYPE, PROMPT_EVENT_TYPE, ReportError, UNASSIGNED,
-    attention_windows, hm, load_rules, prefix_bound, share, time_is_when_it_happened,
+    attention_windows, hm, load_rules, prefix_bound, prompt_origin_denies_anchor, share,
+    time_is_when_it_happened,
 };
 use crate::tz::TzOffset;
 use cclogger_adapters::rfc3339;
@@ -210,6 +211,10 @@ pub struct DayLog {
 struct DayEvent {
     instant: i64,
     repository: Option<String>,
+    /// A prompt event whose own `data.origin` marks it as the human's own -- absent, or
+    /// `"human"`. `false` on a subagent's own dispatch to itself
+    /// ([`prompt_origin_denies_anchor`]) exactly as on every non-prompt event: it still
+    /// lights a cell and joins a block, just not as a prompt.
     is_prompt: bool,
     source_kind: String,
     /// `Some` only on a tool-start event; the inner `Option` is the family the
@@ -312,7 +317,7 @@ pub fn run_log(root: &Path, window: DayWindow, tz_offset: TzOffset) -> Result<Da
         events.push(DayEvent {
             instant: secs,
             repository,
-            is_prompt: row.event_type == PROMPT_EVENT_TYPE,
+            is_prompt: row.event_type == PROMPT_EVENT_TYPE && !prompt_origin_denies_anchor(row),
             source_kind: row.source_kind.clone(),
             tool: (row.event_type == TOOL_STARTED_EVENT_TYPE).then(|| row.tool_family.clone()),
         });
@@ -912,12 +917,12 @@ fn render_header_full(out: &mut String, log: &DayLog) {
     );
     let _ = writeln!(
         out,
-        "              timeline at a {}m gap. `cclogger report`'s agent runtime clusters the",
+        "              timeline at a {}m gap. `cclogger report`'s agent runtime excludes only",
         AGENT_GAP_SECONDS / 60
     );
     let _ = writeln!(
         out,
-        "              non-prompt observations only, so these are not the same number."
+        "              a human's own anchoring prompts, so these are not the same number."
     );
     let _ = writeln!(
         out,
@@ -1264,7 +1269,9 @@ fn render_blocks(out: &mut String, log: &DayLog) {
 mod tests {
     use super::*;
     use crate::import::run_import;
-    use crate::import::tests::{TempRoot, codex_deferred_first_flush, codex_forked_rollout};
+    use crate::import::tests::{
+        TempRoot, codex_deferred_first_flush, codex_forked_rollout, codex_subagent_dispatch,
+    };
     use crate::report::tests::{
         ACQUIRED_AT, Session, TZ, archive, archive_from, assistant_line, at, build, commits_in,
         cwd_for, day, prompt_line, time, window, write_config,
@@ -2918,6 +2925,52 @@ mod tests {
         assert!(
             rendered.contains("copied into a forked transcript"),
             "and the strip says what it left out:\n{rendered}"
+        );
+    }
+
+    #[test]
+    fn a_subagent_prompt_lights_its_cell_but_is_not_counted_as_a_prompt() {
+        // Unlike a fork's copied prompt (kept off the strip entirely, above), a
+        // subagent's own prompt to itself is real activity at a real instant: it did
+        // happen, and hiding it from the strip would understate agent runtime while
+        // pretending nothing happened then. It is just not a prompt of the day's
+        // human -- that is the parent's own prompt, in the same file that dispatched
+        // the subagent.
+        let root = TempRoot::new("log-codex-subagent-origin");
+        let cwd = cwd_for("github.com/acme/api");
+        let (parent, child) = codex_subagent_dispatch(&cwd, &at(0), &at(30), None, &at(60));
+        archive_from(
+            "codex",
+            root.path(),
+            ".codex/sessions/2026/07/26/parent.jsonl",
+            &parent,
+            ACQUIRED_AT,
+        );
+        archive_from(
+            "codex",
+            root.path(),
+            ".codex/sessions/2026/07/26/child.jsonl",
+            &child,
+            ACQUIRED_AT,
+        );
+        run_import(root.path(), false).expect("import the synthetic ledger");
+
+        let log = run_log(root.path(), window(), TZ).expect("log the synthetic day");
+
+        assert_eq!(
+            log.prompts, 1,
+            "only the parent's own prompt is a prompt of the day's human; the child's \
+             is the subagent's own dispatch"
+        );
+        let strip = row(&log, "api");
+        assert_eq!(
+            strip.total_observations, 4,
+            "both session starts and both prompts still reached a cell -- excluded \
+             from the prompt count, not from the strip"
+        );
+        assert_eq!(
+            strip.total_prompts, 1,
+            "but only one of the two prompts is counted as one"
         );
     }
 

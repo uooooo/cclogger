@@ -332,10 +332,18 @@ impl Vendor {
 
     /// Build this vendor's [`Keystore`] from every complete line of one snapshot, plus
     /// the identities the caller should write to the registry.
+    ///
+    /// `codex_subagent_threads` is only ever consulted by the `Vendor::Codex` arm --
+    /// every other vendor ignores it. It cannot be learned here: a subagent's parent
+    /// and child are two different snapshots, and this function is called once per
+    /// snapshot and its `Keystore` is discarded before the next one is even read (see
+    /// [`codex_subagent_thread_ids`]'s doc comment). The caller collects it once,
+    /// across every locator, before the per-locator loop that calls this even starts.
     fn pre_scan(
         self,
         lines: &[&str],
         home: &str,
+        codex_subagent_threads: &std::collections::HashSet<String>,
     ) -> (Keystore, BTreeMap<String, (String, String)>) {
         match self {
             Vendor::ClaudeCode => {
@@ -354,7 +362,7 @@ impl Vendor {
                         scan.observe(&record, home);
                     }
                 }
-                scan.finish()
+                scan.finish(codex_subagent_threads)
             }
             // The same [`PreScan`] the transcript channel uses, including its
             // session-level majority vote: a spool line normally carries its own `cwd`
@@ -687,6 +695,17 @@ pub fn run_import(root: &Path, dry_run: bool) -> Result<ImportReport, LedgerErro
                 .or_insert(snapshot);
         }
 
+        // A Codex subagent gets its own rollout file, so nothing on that file's own
+        // records marks it as one -- the only evidence is a *different* file's
+        // `sub_agent_activity` naming this file's thread. That means the fact has to
+        // be collected across every Codex locator before the per-locator loop below
+        // touches any one of them individually; see `codex_subagent_thread_ids`.
+        let subagent_threads = if vendor == Vendor::Codex {
+            codex_subagent_thread_ids(&ledger, &latest_by_locator)
+        } else {
+            std::collections::HashSet::new()
+        };
+
         for (locator, snapshot) in latest_by_locator {
             report.locators_scanned += 1;
 
@@ -741,7 +760,7 @@ pub fn run_import(root: &Path, dry_run: bool) -> Result<ImportReport, LedgerErro
             // ingested on a prior run. For Codex it also carries the session and its
             // workspace across from the `session_meta` that names them, which no other
             // Codex record does.
-            let (keystore, identities) = vendor.pre_scan(&lines, &home);
+            let (keystore, identities) = vendor.pre_scan(&lines, &home, &subagent_threads);
             // Which lines are copied history rather than live activity -- a whole-file
             // question, answered once here for the same reason the pre-scan is: an
             // adapter sees one record and cannot see the file it sits in.
@@ -846,6 +865,66 @@ pub fn run_import(root: &Path, dry_run: bool) -> Result<ImportReport, LedgerErro
     )?;
 
     Ok(report)
+}
+
+/// Every thread id any Codex snapshot in this run names, as the `agent_thread_id` of a
+/// `sub_agent_activity` record -- i.e. every thread some file claims to have spawned as
+/// a subagent.
+///
+/// A whole pass over every Codex locator, run once **before** the per-locator loop in
+/// [`run_import`] touches any one of them individually. It has to run first: a Codex
+/// subagent gets its own rollout file, so nothing on that file's own records marks it
+/// as one -- the only evidence is a *different* file's `sub_agent_activity` record --
+/// and [`Vendor::pre_scan`] builds and discards one snapshot's [`Keystore`] before the
+/// next snapshot is even read. A fact that only ever appears in a different file than
+/// the one it is about cannot be learned by that per-snapshot pass, no matter where in
+/// it the check is placed.
+///
+/// Cheap by construction: measured over the real corpus, 196 of 347 Codex snapshots
+/// contain a `sub_agent_activity` record at all, so the other 44% are skipped -- every
+/// line of them -- without `serde_json` ever looking at one.
+///
+/// An unreadable snapshot contributes nothing here and is silently skipped; it is not
+/// double-counted as a failure, because the per-locator loop right after this one is
+/// the pass responsible for [`ImportReport::locators_unreadable`].
+fn codex_subagent_thread_ids(
+    ledger: &Ledger,
+    latest_by_locator: &BTreeMap<String, cclogger_archive::Snapshot>,
+) -> std::collections::HashSet<String> {
+    let mut threads = std::collections::HashSet::new();
+    for snapshot in latest_by_locator.values() {
+        let Ok(bytes) = ledger.read(&snapshot.object_id) else {
+            continue;
+        };
+        let text = String::from_utf8_lossy(&bytes);
+        for line in complete_lines(&text, &bytes) {
+            // Reject before `serde_json` ever touches the line: most lines, even in a
+            // snapshot that does contain a `sub_agent_activity` record somewhere, are
+            // something else entirely -- a tool call, a token count, the human's own
+            // prompt.
+            if !line.contains("sub_agent_activity") {
+                continue;
+            }
+            let Ok(record) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            if record.get("type").and_then(Value::as_str) != Some("event_msg") {
+                continue;
+            }
+            let Some(payload) = record.get("payload") else {
+                continue;
+            };
+            if payload.get("type").and_then(Value::as_str) != Some("sub_agent_activity") {
+                continue;
+            }
+            if let Some(thread) = payload.get("agent_thread_id").and_then(Value::as_str)
+                && !thread.is_empty()
+            {
+                threads.insert(thread.to_string());
+            }
+        }
+    }
+    threads
 }
 
 /// What one `run_import` invocation settled before any source was read: where to look,
@@ -975,7 +1054,10 @@ fn run_spool(
     // The whole file, not just the new lines: a `PostToolUse` on a new line has to
     // resolve the session, turn and workspace refs that a `UserPromptSubmit` on an
     // already-ingested line registered, or it would land unattributed.
-    let (keystore, identities) = vendor.pre_scan(&lines, home);
+    //
+    // `vendor` here is always `Vendor::ClaudeCodeHook`, never Codex, so there is no
+    // cross-file subagent set to pass -- an empty one is simply never consulted.
+    let (keystore, identities) = vendor.pre_scan(&lines, home, &std::collections::HashSet::new());
     if !dry_run {
         for (opaque, (kind, display)) in &identities {
             ledger.register_identity(opaque, kind, display, observed_at)?;
@@ -1132,7 +1214,10 @@ fn run_git(
 
         let text = String::from_utf8_lossy(&bytes);
         let lines = complete_lines(&text, &bytes);
-        let (keystore, identities) = vendor.pre_scan(&lines, run.home);
+        // `vendor` here is always `Vendor::Git`, never Codex, so there is no cross-file
+        // subagent set to pass -- an empty one is simply never consulted.
+        let (keystore, identities) =
+            vendor.pre_scan(&lines, run.home, &std::collections::HashSet::new());
         if !run.dry_run {
             for (opaque, (kind, display)) in &identities {
                 ledger.register_identity(opaque, kind, display, run.observed_at)?;
@@ -1976,6 +2061,11 @@ impl GitPreScan {
 /// So every ref is registered twice: under the raw vendor session id, for the records
 /// that name one, and under [`codex_history::FILE_SESSION`], for the overwhelming
 /// majority that do not.
+///
+/// The one fact this pre-scan cannot learn by itself is whether the file *in front of
+/// it* is a subagent's: that is named only in a *different* file, so [`Self::finish`]
+/// takes the whole run's answer as a parameter rather than deriving it here -- see
+/// [`codex_subagent_thread_ids`].
 #[derive(Default)]
 struct CodexPreScan {
     keystore: Keystore,
@@ -1983,6 +2073,17 @@ struct CodexPreScan {
     identities: BTreeMap<String, (String, String)>,
     /// The file's session id, from the first `session_meta` that names one.
     session: Option<String>,
+    /// This file's own canonical thread id -- the first `session_meta`'s `payload.id`.
+    ///
+    /// Deliberately not [`codex_session_id`] (`session_id`, falling back to `id`): a
+    /// corpus survey found every `sub_agent_activity.agent_thread_id` resolves to a
+    /// real file's own `session_meta.id`, the same field [`codex_inherited`]'s `SELF`
+    /// reads for exactly the same reason (upstream's own reader distinguishes threads
+    /// by this field, not by `session_id`). It is read here independently of
+    /// `session_id` because the two are measured to differ whenever both are present,
+    /// so treating the former as a stand-in for the latter would compare a subagent
+    /// spawn's parent-supplied thread id against a value it was never issued.
+    thread_id: Option<String>,
     /// The resolved identities of the file's `cwd`. `None` when no `session_meta`
     /// carried one, or it resolved outside the ghq tree -- unresolved, never
     /// guess-merged (design §10 rule 4).
@@ -2005,6 +2106,14 @@ impl CodexPreScan {
                 // value on each re-announcement.
                 if self.session.is_none() {
                     self.session = codex_session_id(payload).map(str::to_string);
+                }
+                // Same "first one wins" rule, for the same reason -- see `thread_id`'s
+                // doc comment for why this is `payload.id` rather than `session_id`.
+                if self.thread_id.is_none() {
+                    self.thread_id = payload
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
                 }
                 // Every `session_meta`, not just the first, so a variant that omits
                 // `cwd` does not lose the file its workspace. Last writer wins, which
@@ -2076,7 +2185,15 @@ impl CodexPreScan {
     /// Raw cwd strings never reach the registry -- they contain the username, and the
     /// ledger stays metadata-only. What is stored is the normalized identity
     /// (`github.com/acme/api`) behind each pseudonym.
-    fn finish(mut self) -> (Keystore, BTreeMap<String, (String, String)>) {
+    ///
+    /// `subagent_threads` is the whole run's answer to a question this one file cannot
+    /// answer about itself -- see [`codex_subagent_thread_ids`]. Consulted only here,
+    /// once [`Self::thread_id`] has settled, rather than per-record in
+    /// [`CodexPreScan::observe`].
+    fn finish(
+        mut self,
+        subagent_threads: &std::collections::HashSet<String>,
+    ) -> (Keystore, BTreeMap<String, (String, String)>) {
         // Both keys, always: the records that name their session (`session_meta`) and
         // the ones that cannot (everything else) must resolve to the same refs.
         let mut keys = vec![codex_history::FILE_SESSION.to_string()];
@@ -2098,6 +2215,20 @@ impl CodexPreScan {
             self.map_all("workspace", &keys, &opaque);
             self.identities
                 .insert(opaque, ("workspace".to_string(), workspace));
+        }
+        // If some *other* file in this run named this file's own thread id as a
+        // subagent's, every prompt this file itself goes on to produce is a
+        // subagent's, not a human's. Registered under the same keys "session" is, so
+        // `codex_history::transform_user_message` resolves it by whichever of them the
+        // record in hand carries -- overwhelmingly `FILE_SESSION`, since a prompt
+        // carries no session field of its own (see this struct's doc comment). The
+        // value is unused: presence is the whole fact.
+        if self
+            .thread_id
+            .as_deref()
+            .is_some_and(|id| subagent_threads.contains(id))
+        {
+            self.map_all("codex_subagent_session", &keys, "subagent");
         }
         (self.keystore, self.identities)
     }
@@ -2849,6 +2980,28 @@ pub(crate) mod tests {
             .expect("archive snapshot");
     }
 
+    /// [`archive_snapshot_for`] for a Codex locator the caller names, rather than the
+    /// vendor's one fixed synthetic locator ([`CODEX_LOCATOR`]) -- for the tests that
+    /// need more than one Codex file archived at once, which `archive_snapshot_for`
+    /// cannot model (it always writes to that same single locator).
+    fn archive_codex_snapshot(
+        root: &Path,
+        locator: &str,
+        bytes: impl AsRef<[u8]>,
+        acquired_at: &str,
+    ) {
+        let mut ledger = Ledger::open(root).expect("open ledger");
+        ledger
+            .archive_file(
+                CODEX_SOURCE_KIND,
+                locator,
+                bytes.as_ref(),
+                acquired_at,
+                None,
+            )
+            .expect("archive snapshot");
+    }
+
     /// The two vendors' wire names, spelled out here rather than taken from
     /// [`Vendor::source_kind`]: these are what a snapshot row on disk actually says,
     /// so a test that took them from the code under test could not catch that code
@@ -2974,6 +3127,28 @@ pub(crate) mod tests {
             "type": "event_msg",
             "timestamp": timestamp,
             "payload": { "type": "agent_message", "message": text },
+        })
+        .to_string()
+    }
+
+    /// One `event_msg:sub_agent_activity` -- a *parent* file's own record of having
+    /// spawned a subagent, naming the *child's* thread id. The child's own file
+    /// carries nothing of the kind; this is the only place the relation is ever
+    /// stated (see [`codex_subagent_thread_ids`]).
+    fn codex_sub_agent_activity(
+        timestamp: &str,
+        agent_thread_id: &str,
+        agent_path: &str,
+    ) -> String {
+        json!({
+            "type": "event_msg",
+            "timestamp": timestamp,
+            "payload": {
+                "type": "sub_agent_activity",
+                "kind": "started",
+                "agent_thread_id": agent_thread_id,
+                "agent_path": agent_path,
+            },
         })
         .to_string()
     }
@@ -3161,6 +3336,75 @@ pub(crate) mod tests {
             codex_turn_context(flushed_at, cwd),
             codex_user_message(flushed_at, "SYNTHETIC first prompt"),
         ]
+    }
+
+    /// The subagent's own thread in [`codex_subagent_dispatch`]'s pair -- distinct from
+    /// [`CODEX_CHILD_SESSION`]/[`CODEX_PARENT_SESSION`] above, which name a *fork*, a
+    /// different relation the cross-file pre-pass must be able to tell apart from a
+    /// dispatch.
+    const CODEX_SUBAGENT_THREAD: &str = "77777777-7777-4777-8777-777777777777";
+    /// The parent thread that dispatches [`CODEX_SUBAGENT_THREAD`] in
+    /// [`codex_subagent_dispatch`]'s pair.
+    const CODEX_DISPATCHER_THREAD: &str = "88888888-8888-4888-8888-888888888888";
+
+    /// A parent Codex rollout that submits one prompt of its own and then dispatches a
+    /// subagent to [`CODEX_SUBAGENT_THREAD`], and the child rollout that subagent
+    /// writes to its own file with a session start, an optional assistant response, and
+    /// one prompt of its own -- the cross-file shape
+    /// `codex_history::transform_user_message` reads through the importer's pre-pass to
+    /// stamp `data.origin`: `"human"` on the parent's prompt, `"subagent"` on the
+    /// child's. `(parent_lines, child_lines)`.
+    ///
+    /// The child's own session start and its own prompt take separate timestamps --
+    /// unlike the parent's, which share `parent_at` -- so a caller can place them close
+    /// enough to cluster on the agent clock without also collapsing to one instant,
+    /// which would cluster to zero seconds whether or not the prompt actually joined
+    /// the cluster and so could not tell the two cases apart.
+    ///
+    /// `child_response_at`, when `Some`, inserts an assistant response into the child's
+    /// own file before its own prompt -- the shape a response-time regression needs to
+    /// be caught by: a denied prompt must never become `Turn::Prompted` and consume it,
+    /// which is exactly what a future refactor unifying this arm's `turns_by_session`
+    /// handling with the anchoring one could do without any test noticing, since every
+    /// other assertion here is about counts and clocks, never about response pairing.
+    ///
+    /// Shared with `report.rs`'s and `log.rs`'s test modules rather than copied into
+    /// them, for the same reason [`codex_forked_rollout`] is: the shape a subagent
+    /// dispatch takes is stated once, so neither module's fixture can drift from what
+    /// `codex_history` actually reads. See
+    /// `a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`
+    /// above, which this mirrors.
+    pub(crate) fn codex_subagent_dispatch(
+        cwd: &str,
+        parent_at: &str,
+        child_session_at: &str,
+        child_response_at: Option<&str>,
+        child_prompt_at: &str,
+    ) -> (Vec<String>, Vec<String>) {
+        let parent = vec![
+            codex_session_meta_with(
+                parent_at,
+                cwd,
+                CODEX_DISPATCHER_THREAD,
+                Some(CODEX_DISPATCHER_THREAD),
+            ),
+            codex_user_message(parent_at, "SYNTHETIC human prompt"),
+            codex_sub_agent_activity(parent_at, CODEX_SUBAGENT_THREAD, "reviewer"),
+        ];
+        let mut child = vec![codex_session_meta_with(
+            child_session_at,
+            cwd,
+            CODEX_SUBAGENT_THREAD,
+            Some(CODEX_SUBAGENT_THREAD),
+        )];
+        if let Some(response_at) = child_response_at {
+            child.push(codex_agent_message(response_at, "SYNTHETIC response"));
+        }
+        child.push(codex_user_message(
+            child_prompt_at,
+            "SYNTHETIC subagent prompt",
+        ));
+        (parent, child)
     }
 
     /// The Claude Code counterpart of [`codex_bytes`], for the mixed-vendor test.
@@ -4634,7 +4878,7 @@ pub(crate) mod tests {
         let mut scan = CodexPreScan::default();
         scan.observe(&call, TEST_HOME);
         scan.observe(&output, TEST_HOME);
-        let (keystore, _) = scan.finish();
+        let (keystore, _) = scan.finish(&std::collections::HashSet::new());
 
         let started = codex_history::transform(&call, &keystore);
         let finished = codex_history::transform(&output, &keystore);
@@ -4656,6 +4900,294 @@ pub(crate) mod tests {
             started[0].subject, finished[0].subject,
             "the started/finished pair must land on one tool scope, or nothing can join \
              them back together"
+        );
+    }
+
+    /// A prior version of this test hand-built a `Keystore` (`Keystore::new().map(...)`)
+    /// and asserted directly on it. That cannot catch the bug this one exists to catch:
+    /// the fact that a subagent's own thread id is *only* ever named in a different
+    /// file's `sub_agent_activity` record, and [`Vendor::pre_scan`] builds and discards
+    /// one snapshot's `Keystore` before the next snapshot is even read. A hand-built
+    /// `Keystore` cannot observe whether the *real* pre-pass, reading real archived
+    /// bytes through the real `Ledger`, ever computes the right set at all.
+    ///
+    /// So this test archives two real files and calls the same production functions
+    /// [`run_import`] itself calls -- [`codex_subagent_thread_ids`] and
+    /// [`Vendor::pre_scan`] -- directly, fed nothing this test typed by hand, only
+    /// bytes read back out of the `Ledger` those two files were archived into. That
+    /// proves the pre-pass and the pre-scan are each individually correct, and
+    /// correct when composed by hand exactly as `run_import` composes them.
+    ///
+    /// **What it does not prove**: that `run_import`'s own per-locator loop performs
+    /// that composition -- i.e. that the wire from its pre-pass call site to its
+    /// `Vendor::pre_scan` call site is actually connected. Severing that wire inside
+    /// `run_import` leaves this test green, because nothing below re-enters
+    /// `run_import` to check it (see the comment on the `run_import` call below).
+    /// Closing that gap needed a ledger-visible signal this task did not yet produce
+    /// (`codex_history::transform_user_message` did not read this fact at all). It is
+    /// closed by
+    /// [`a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`]
+    /// right below, which asserts through `run_import` on an actual observation's
+    /// `data.origin`.
+    #[test]
+    fn a_subagent_rollout_is_recognised_from_its_parents_file() {
+        // parent.jsonl says it spawned a subagent whose thread is "thr-child".
+        // child.jsonl IS that thread -- its own first `session_meta.id` is
+        // "thr-child" -- and carries a prompt of its own. `session_id` deliberately
+        // differs from `id` on both files, so a pre-scan that matched on the wrong
+        // one of the two could not pass by accident (see `CodexPreScan::thread_id`).
+        let cwd = "/SYNTHETIC/work/repo";
+        let parent_bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.000Z",
+                cwd,
+                "thr-parent",
+                Some("ses-parent"),
+            ),
+            codex_sub_agent_activity("2026-08-05T00:00:01.000Z", "thr-child", "reviewer"),
+        );
+        let child_bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.500Z",
+                cwd,
+                "thr-child",
+                Some("ses-child"),
+            ),
+            codex_user_message("2026-08-05T00:00:02.000Z", "SYNTHETIC prompt"),
+        );
+
+        let root = TempRoot::new("codex-subagent-cross-file");
+        archive_codex_snapshot(
+            root.path(),
+            "parent.jsonl",
+            &parent_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+        archive_codex_snapshot(
+            root.path(),
+            "child.jsonl",
+            &child_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+        // Called for its own sake -- it must not error against these two archived
+        // files -- but this does NOT exercise the wiring this task added.
+        // `run_import`'s own per-locator loop computes `subagent_threads` once and
+        // threads it into its own `Vendor::pre_scan` call; nothing below re-enters
+        // `run_import` to check that wire is intact, because the checks below call
+        // `codex_subagent_thread_ids` and `Vendor::Codex::pre_scan` directly rather
+        // than through it. Severing that wire inside `run_import` (e.g. passing an
+        // empty set instead of the one just computed) leaves every assertion below
+        // passing regardless. See
+        // `a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import`
+        // right below, which reads an actual observation's `data.origin` back out of
+        // the ledger `run_import` wrote to and would catch exactly that.
+        run_import(root.path(), false).expect("import");
+
+        let ledger = Ledger::open(root.path()).expect("reopen ledger");
+        let latest_by_locator: BTreeMap<String, cclogger_archive::Snapshot> = ledger
+            .find_snapshots(&SnapshotFilter {
+                source_kind: Some(CODEX_SOURCE_KIND),
+                ..Default::default()
+            })
+            .expect("find snapshots")
+            .into_iter()
+            .map(|s| (s.source_locator.clone(), s))
+            .collect();
+
+        let subagent_threads = codex_subagent_thread_ids(&ledger, &latest_by_locator);
+        assert_eq!(
+            subagent_threads,
+            std::collections::HashSet::from(["thr-child".to_string()]),
+            "the importer must learn from parent.jsonl a fact about child.jsonl, and \
+             nothing else"
+        );
+
+        let child_snapshot = latest_by_locator
+            .get("child.jsonl")
+            .expect("child archived");
+        let child_raw = ledger.read(&child_snapshot.object_id).expect("read child");
+        let child_text = String::from_utf8_lossy(&child_raw);
+        let child_lines = complete_lines(&child_text, &child_raw);
+        let (child_keystore, _) =
+            Vendor::Codex.pre_scan(&child_lines, TEST_HOME, &subagent_threads);
+        assert!(
+            child_keystore
+                .resolve("codex_subagent_session", codex_history::FILE_SESSION)
+                .is_some(),
+            "child.jsonl's own pre-scan must recognise its thread was named by \
+             parent.jsonl"
+        );
+
+        let parent_snapshot = latest_by_locator
+            .get("parent.jsonl")
+            .expect("parent archived");
+        let parent_raw = ledger
+            .read(&parent_snapshot.object_id)
+            .expect("read parent");
+        let parent_text = String::from_utf8_lossy(&parent_raw);
+        let parent_lines = complete_lines(&parent_text, &parent_raw);
+        let (parent_keystore, _) =
+            Vendor::Codex.pre_scan(&parent_lines, TEST_HOME, &subagent_threads);
+        assert!(
+            parent_keystore
+                .resolve("codex_subagent_session", codex_history::FILE_SESSION)
+                .is_none(),
+            "parent.jsonl named a subagent, but is not one itself"
+        );
+    }
+
+    /// Closes the gap the test above's doc comment names: it proves the pre-pass and
+    /// the pre-scan are each individually correct, and correct when composed by hand
+    /// exactly as `run_import` composes them -- but not that `run_import`'s own
+    /// per-locator loop performs that composition, because its assertions call
+    /// `codex_subagent_thread_ids` and `Vendor::Codex::pre_scan` directly rather than
+    /// reading anything `run_import` itself wrote. Severing `import.rs`'s wire from its
+    /// pre-pass call site to its `Vendor::pre_scan` call site (e.g. passing an empty set
+    /// in place of the one just computed) left that test green, because nothing read
+    /// `codex_subagent_session` back out of a `Keystore` at the time it was written.
+    ///
+    /// `codex_history::transform_user_message` now reads that fact and stamps
+    /// `data.origin`, so this test asks `run_import` the question directly: archive the
+    /// same shape of parent/child pair -- this time with the parent also carrying a
+    /// prompt of its own, so both sides of the distinction are observable -- run the
+    /// real import, and read the `prompt.submitted` rows it actually wrote out of the
+    /// ledger. Not a `Keystore`, and not adapter output fed a hand-built one.
+    #[test]
+    fn a_subagents_own_prompt_is_stamped_with_origin_subagent_through_run_import() {
+        let cwd = "/SYNTHETIC/work/repo";
+        let parent_bytes = format!(
+            "{}\n{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.000Z",
+                cwd,
+                "thr-parent",
+                Some("ses-parent"),
+            ),
+            codex_user_message("2026-08-05T00:00:00.500Z", "SYNTHETIC human prompt"),
+            codex_sub_agent_activity("2026-08-05T00:00:01.000Z", "thr-child", "reviewer"),
+        );
+        let child_bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with(
+                "2026-08-05T00:00:00.500Z",
+                cwd,
+                "thr-child",
+                Some("ses-child"),
+            ),
+            codex_user_message("2026-08-05T00:00:02.000Z", "SYNTHETIC subagent prompt"),
+        );
+
+        let root = TempRoot::new("codex-subagent-origin");
+        archive_codex_snapshot(
+            root.path(),
+            "parent.jsonl",
+            &parent_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+        archive_codex_snapshot(
+            root.path(),
+            "child.jsonl",
+            &child_bytes,
+            "2026-08-05T00:00:05Z",
+        );
+
+        run_import(root.path(), false).expect("import");
+
+        let prompts = bodies_of_type(root.path(), "dev.cclog.prompt.submitted.v1");
+        assert_eq!(prompts.len(), 2, "one prompt per file: {prompts:?}");
+
+        // Neither file's own `user_message` carries a `session_id` (see
+        // `codex_user_message`'s doc comment), so each resolves through
+        // `codex_history::FILE_SESSION` to whatever `CodexPreScan::finish` registered
+        // for *this* file -- the same opaque ref `pseudonymize` would derive from that
+        // file's own `session_meta.payload.session_id`, exactly as the real importer
+        // computes it.
+        let parent_subject = format!("session/{}", pseudonymize("ses", "ses-parent"));
+        let child_subject = format!("session/{}", pseudonymize("ses", "ses-child"));
+
+        let parent_prompt = prompts
+            .iter()
+            .find(|p| p["subject"].as_str() == Some(parent_subject.as_str()))
+            .unwrap_or_else(|| panic!("no prompt landed on the parent's session: {prompts:?}"));
+        let child_prompt = prompts
+            .iter()
+            .find(|p| p["subject"].as_str() == Some(child_subject.as_str()))
+            .unwrap_or_else(|| panic!("no prompt landed on the child's session: {prompts:?}"));
+
+        assert_eq!(
+            parent_prompt["data"]["origin"], "human",
+            "parent.jsonl is not itself a subagent's file: {parent_prompt:?}"
+        );
+        assert_eq!(
+            child_prompt["data"]["origin"], "subagent",
+            "child.jsonl IS the thread parent.jsonl's sub_agent_activity named, so \
+             run_import's own per-locator loop must have threaded the cross-file \
+             subagent_threads set into this file's pre-scan for its prompt to be \
+             marked: {child_prompt:?}"
+        );
+    }
+
+    #[test]
+    fn the_codex_pre_scans_thread_id_is_the_first_session_metas_not_a_re_announcement() {
+        // The same shape `a_re_announced_session_meta_with_a_fresh_id_is_still_one_codex_session`
+        // pins for `session` (`session_id`), pinned here for `thread_id` (`id`)
+        // instead: `session_meta` is re-announced up to 30 times per file with a
+        // fresh `id` each time (see `codex_session_id`'s doc comment), which is
+        // ordinary data, not an edge case. Under a last-wins bug, `thread_id` would
+        // hold the *stale* re-announced id, the match against a run-wide subagent
+        // set would miss, and a genuine subagent's prompts would stay on the human
+        // side -- the exact defect this task exists to remove.
+        let cwd = "/SYNTHETIC/work/repo";
+        let bytes = format!(
+            "{}\n{}\n",
+            codex_session_meta_with("2026-08-05T00:00:00.000Z", cwd, "thr-real", Some("ses-1")),
+            // Re-announced with a fresh `id` -- and the same `session_id`, exactly as
+            // the real corpus does it.
+            codex_session_meta_with("2026-08-05T00:00:03.000Z", cwd, "thr-stale", Some("ses-1")),
+        );
+        let lines = complete_lines(&bytes, bytes.as_bytes());
+        // As if some other file's `sub_agent_activity` had named the *first* id.
+        let subagent_threads = std::collections::HashSet::from(["thr-real".to_string()]);
+
+        let (keystore, _) = Vendor::Codex.pre_scan(&lines, TEST_HOME, &subagent_threads);
+
+        assert!(
+            keystore
+                .resolve("codex_subagent_session", codex_history::FILE_SESSION)
+                .is_some(),
+            "the file's own thread id must be its *first* session_meta's \
+             (\"thr-real\"), not a later re-announcement (\"thr-stale\")"
+        );
+    }
+
+    #[test]
+    fn codex_subagent_thread_ids_ignores_an_empty_agent_thread_id() {
+        // An empty thread id names nothing -- collecting it would collapse every
+        // file that ever resolves an empty vendor id onto one shared, meaningless
+        // key.
+        let root = TempRoot::new("codex-subagent-empty-thread-id");
+        let bytes = format!(
+            "{}\n",
+            codex_sub_agent_activity("2026-08-05T00:00:01.000Z", "", "reviewer"),
+        );
+        archive_codex_snapshot(root.path(), "parent.jsonl", &bytes, "2026-08-05T00:00:05Z");
+
+        let ledger = Ledger::open(root.path()).expect("open ledger");
+        let latest_by_locator: BTreeMap<String, cclogger_archive::Snapshot> = ledger
+            .find_snapshots(&SnapshotFilter {
+                source_kind: Some(CODEX_SOURCE_KIND),
+                ..Default::default()
+            })
+            .expect("find snapshots")
+            .into_iter()
+            .map(|s| (s.source_locator.clone(), s))
+            .collect();
+
+        assert!(
+            codex_subagent_thread_ids(&ledger, &latest_by_locator).is_empty(),
+            "an empty agent_thread_id names no real thread and must not be collected"
         );
     }
 
@@ -5243,8 +5775,10 @@ pub(crate) mod tests {
             "every line in this fixture must produce exactly one observation"
         );
 
-        // The same two whole-file passes `run_import` makes, in the same order.
-        let (keystore, _) = Vendor::Codex.pre_scan(&lines, home);
+        // The same two whole-file passes `run_import` makes, in the same order. This
+        // fixture is one file with no subagent lineage, so an empty set is correct,
+        // not merely convenient.
+        let (keystore, _) = Vendor::Codex.pre_scan(&lines, home, &std::collections::HashSet::new());
         let inherited = Vendor::Codex.inherited_lines(&lines);
         assert_eq!(
             inherited,
@@ -5331,6 +5865,22 @@ pub(crate) mod tests {
                 "type": "response_item",
                 "timestamp": "2026-07-20T05:00:06.000Z",
                 "payload": { "type": "function_call_output", "call_id": "call_2", "output": "SYNTHETIC" },
+            })
+            .to_string(),
+            json!({
+                "type": "event_msg",
+                "timestamp": "2026-07-20T05:00:07.000Z",
+                "payload": {
+                    "type": "mcp_tool_call_end",
+                    "call_id": "call_3",
+                    "invocation": {
+                        "server": "synthetic-server",
+                        "tool": "synthetic_tool",
+                        "arguments": { "SYNTHETIC": "input" },
+                    },
+                    "duration": { "secs": 1, "nanos": 0 },
+                    "result": { "SYNTHETIC": "output" },
+                },
             })
             .to_string(),
         ];

@@ -63,5 +63,5 @@ fn all_fixture_observations_round_trip() {
         "round-tripped {count} observations across {} fixtures",
         files.len()
     );
-    assert_eq!(count, 33, "expected 33 fixture observations");
+    assert_eq!(count, 36, "expected 36 fixture observations");
 }

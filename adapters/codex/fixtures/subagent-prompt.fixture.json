@@ -1,0 +1,85 @@
+{
+  "vendor": "codex",
+  "variant": "subagent-prompt-origin",
+  "description": "Two synthetic Codex human-prompt records, standing in for two different rollout files: one whose thread a different file's sub_agent_activity named as a subagent's (so the importer's cross-file pass registers codex_subagent_session for it), and one whose was not. Exercises codex_history::transform_user_message's origin field, which tells a subagent's own prompt -- never a human's attention -- apart from a human's. Both records carry an explicit session_id, which a real Codex user_message never does (see codex_history::FILE_SESSION's doc comment): this fixture's flat records list is checked against one shared Keystore, and FILE_SESSION can only stand for one file's fallback at a time, so an explicit session_id is how the second file is told apart here without changing what the fixture proves about transform_user_message itself.",
+  "records": [
+    {
+      "type": "event_msg",
+      "timestamp": "2026-08-01T00:00:00.000Z",
+      "payload": {
+        "type": "user_message",
+        "message": "SYNTHETIC human prompt",
+        "client_id": "c1",
+        "session_id": "9f2c1a00-0000-4000-8000-000000000h01"
+      }
+    },
+    {
+      "type": "event_msg",
+      "timestamp": "2026-08-01T00:00:05.000Z",
+      "payload": {
+        "type": "user_message",
+        "message": "SYNTHETIC subagent prompt",
+        "client_id": "c1",
+        "session_id": "9f2c1a00-0000-4000-8000-000000000s01"
+      }
+    }
+  ],
+  "expected": [
+    {
+      "specversion": "1.0",
+      "id": "019bc60b-0001-7001-8001-000000000001",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_HUM1",
+      "time": "2026-08-01T00:00:00.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:1",
+      "cclogobservedat": "2026-08-01T00:00:00.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_HUM1|prompt.submitted|umsg_c76e3bfec837c7b18694",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "content_ref": null,
+        "origin": "human"
+      }
+    },
+    {
+      "specversion": "1.0",
+      "id": "019bc60b-0002-7002-8002-000000000002",
+      "source": "cclog://device/dev_7N2/adapter/codex",
+      "type": "dev.cclog.prompt.submitted.v1",
+      "subject": "session/ses_SUB1",
+      "time": "2026-08-01T00:00:05.000Z",
+      "datacontenttype": "application/json",
+      "cclogschemaversion": 0,
+      "cclogsourcekind": "codex",
+      "cclogsourceversion": "codex-transcript/1",
+      "cclogadapterversion": "codex-history/0.0.0",
+      "cclogsourcerecordref": "line:2",
+      "cclogobservedat": "2026-08-01T00:00:05.050Z",
+      "cclogmonotonicns": null,
+      "cclogbootid": null,
+      "cclogprivacyclass": "t1_structured",
+      "cclogpurposehint": null,
+      "cclogdedupekey": "codex|dev_7N2|ses_SUB1|prompt.submitted|umsg_a878015d29b94299e739",
+      "cclogintegritystate": "ok",
+      "cclogprofile": "personal",
+      "cclogworkspaceref": "wsp_XYZ1",
+      "cclogrepositoryref": "rep_ACME",
+      "data": {
+        "content_ref": null,
+        "origin": "subagent"
+      }
+    }
+  ]
+}

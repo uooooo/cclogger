@@ -110,7 +110,8 @@
       "cclogworkspaceref": "wsp_XYZ1",
       "cclogrepositoryref": "rep_ACME",
       "data": {
-        "content_ref": null
+        "content_ref": null,
+        "origin": "human"
       }
     },
     {
@@ -197,7 +198,8 @@
       "cclogworkspaceref": "wsp_XYZ1",
       "cclogrepositoryref": "rep_ACME",
       "data": {
-        "content_ref": null
+        "content_ref": null,
+        "origin": "human"
       }
     }
   ]

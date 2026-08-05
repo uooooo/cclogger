@@ -65,6 +65,14 @@
 //! CLI versions may route human turns through it. It stays a gap until the gap counts
 //! from a real import say how big it is.
 //!
+//! `event_msg:mcp_tool_call_end` (6,220 records) *is* mapped, unlike its siblings
+//! `patch_apply_end` and `sub_agent_activity`: those two describe work the ledger
+//! already holds under other kinds, so mapping them would double-count, while an MCP
+//! call is counted nowhere else -- 51 distinct MCP tool names appear in
+//! `mcp_tool_call_end` and zero among `function_call`'s 31, so these are not a second
+//! view of something already imported. `token_count` and `agent_reasoning` are a
+//! different tool's subject, not this one's, and stay unmapped too.
+//!
 //! # Tool durations
 //!
 //! Same mechanism as the Claude Code historical path, for the same reason: a
@@ -72,6 +80,14 @@
 //! `tool_started_at` timestamp the importer's pre-scan registers for the matching call.
 //! When it is unavailable the field is `null` -- never `0`, which is a real measurement
 //! of a tool that returned within a millisecond.
+//!
+//! `event_msg:mcp_tool_call_end` is the one exception: it carries its own `duration` --
+//! a serialized Rust `Duration`, `{secs, nanos}` -- because it is a single self-reporting
+//! record rather than a call/output pair split across two lines the way
+//! `custom_tool_call`/`function_call` are. [`transform_mcp_tool_call`] converts it
+//! directly rather than closing an interval against a `tool_started_at` this record kind
+//! never registers. Same rule for what an unmeasurable duration means: `null`, never
+//! `0`.
 
 use crate::{Keystore, pseudonymize};
 use cclogger_domain::{IntegrityState, ObservationDraft, PrivacyClass, SourceKind};
@@ -110,6 +126,7 @@ pub const MAPPED_KINDS: &[&str] = &[
     "response_item:function_call",
     "response_item:custom_tool_call_output",
     "response_item:function_call_output",
+    "event_msg:mcp_tool_call_end",
 ];
 
 /// The kind of a Codex transcript record: its `type`, plus `payload.type` for the two
@@ -155,6 +172,7 @@ pub fn transform(record: &Value, ctx: &Keystore) -> Vec<ObservationDraft> {
         "response_item:custom_tool_call_output" | "response_item:function_call_output" => {
             transform_tool_output(payload, &time, ctx)
         }
+        "event_msg:mcp_tool_call_end" => transform_mcp_tool_call(payload, &time, ctx),
         _ => Vec::new(),
     }
 }
@@ -228,6 +246,16 @@ fn transform_user_message(payload: &Value, time: &str, ctx: &Keystore) -> Vec<Ob
     let (workspace, repository) = identity_refs(payload, ctx);
     let identity = content_identity("umsg", time, payload.get("message").unwrap_or(&Value::Null));
 
+    // Codex has no per-record subagent flag: a subagent writes its own rollout
+    // file, so the fact lives in the *parent* file's sub_agent_activity and
+    // reaches this file through the importer's cross-file pass. A prompt a
+    // subagent typed to itself is not a human's attention, and 70 of them are on
+    // the clock today.
+    let origin = match ctx.resolve("codex_subagent_session", session_key(payload)) {
+        Some(_) => "subagent",
+        None => "human",
+    };
+
     vec![ObservationDraft {
         event_type: "dev.cclog.prompt.submitted.v1".to_string(),
         subject: format!("session/{session}"),
@@ -247,7 +275,7 @@ fn transform_user_message(payload: &Value, time: &str, ctx: &Keystore) -> Vec<Ob
         // as the Claude Code historical path does -- would be a plausible-looking
         // default for something absent, and any bucket derived from the message
         // instead would leak the prompt's size out of a metadata-only ledger.
-        data: json!({ "content_ref": null }),
+        data: json!({ "content_ref": null, "origin": origin }),
     }]
 }
 
@@ -409,6 +437,47 @@ fn transform_tool_output(payload: &Value, time: &str, ctx: &Keystore) -> Vec<Obs
     }]
 }
 
+/// `mcp_tool_call_end` -> one `tool.finished`.
+///
+/// Self-contained, unlike [`transform_tool_call`]/[`transform_tool_output`]'s
+/// call/output pair: this record carries the whole interaction -- including its own
+/// `duration` -- on one line, so there is no `tool_started_at` to close against and no
+/// separate `tool.started` half to emit. `tool_family` is always `"mcp"`: every record
+/// this arm is reached for is one, by construction of the match in [`transform`].
+///
+/// `outcome` still goes through [`output_outcome`], which reads `success`/`status` --
+/// neither of which this record shape carries, so it honestly reports `"unknown"`
+/// rather than reading into `result` (tool output) to guess one.
+fn transform_mcp_tool_call(payload: &Value, time: &str, ctx: &Keystore) -> Vec<ObservationDraft> {
+    let session = session_ref(payload, ctx);
+    let (workspace, repository) = identity_refs(payload, ctx);
+    let scope = mcp_tool_scope(payload, time, ctx);
+    let duration_ms = mcp_duration_ms(payload.get("duration"));
+
+    vec![ObservationDraft {
+        event_type: "dev.cclog.tool.finished.v1".to_string(),
+        subject: subject_for(session.as_deref(), &scope),
+        time: time.to_string(),
+        traceparent: None,
+        source_kind: SourceKind::Codex,
+        source_version: SOURCE_VERSION.to_string(),
+        adapter_version: ADAPTER_VERSION.to_string(),
+        privacy_class: PrivacyClass::T1Structured,
+        integrity_state: IntegrityState::Ok,
+        workspace_ref: workspace.clone(),
+        repository_ref: repository,
+        correlation_cluster: None,
+        dedupe_seed: seed(session, "tool.finished", &scope),
+        data: json!({
+            "tool_family": "mcp",
+            "outcome": output_outcome(payload),
+            "duration_ms": duration_ms,
+            "workspace_ref": workspace,
+            "content_ref": null,
+        }),
+    }]
+}
+
 /// The vendor id a tool record is keyed by: `id` when present, else `call_id`.
 ///
 /// `tool-call-with-ids.shape.json`: most `custom_tool_call` records carry both, but a
@@ -433,6 +502,55 @@ fn tool_scope(payload: &Value, time: &str, ctx: &Keystore, prefix: &str) -> Stri
     call_key(payload)
         .and_then(|id| ctx.resolve("tool", id))
         .unwrap_or_else(|| content_identity(prefix, time, payload))
+}
+
+/// The opaque ref an `mcp_tool_call_end` is scoped and deduped by.
+///
+/// Prefers the same `"tool"` Keystore channel [`tool_scope`] resolves through, keyed on
+/// `call_id` -- the field this record shares with every other tool kind -- so a future
+/// pre-scan pass that learns to register MCP calls needs no change here.
+///
+/// Deliberately **not** [`tool_scope`] itself: that function's fallback is
+/// [`content_identity`] over the *whole payload*, and this payload's `invocation`
+/// carries `arguments` (the call's own input) alongside `result` (its output) --
+/// content, in exactly the way a prompt is. Today's pre-scan does not observe
+/// `mcp_tool_call_end` at all (see `CodexPreScan::observe`), so that fallback would not
+/// be the rare miss it is for `custom_tool_call`/`function_call`; it would run on
+/// effectively every one of these 6,220 records. So this hashes a value built field by
+/// field instead: `call_id` plus `invocation`'s two identifiers, `server` and `tool`,
+/// copied out by name. `arguments` and `result` never reach it, hashed or otherwise.
+fn mcp_tool_scope(payload: &Value, time: &str, ctx: &Keystore) -> String {
+    let call_id = payload.get("call_id").and_then(Value::as_str);
+    if let Some(opaque) = call_id.and_then(|id| ctx.resolve("tool", id)) {
+        return opaque;
+    }
+    let invocation = payload.get("invocation");
+    let server = invocation
+        .and_then(|i| i.get("server"))
+        .and_then(Value::as_str);
+    let tool = invocation
+        .and_then(|i| i.get("tool"))
+        .and_then(Value::as_str);
+    content_identity(
+        "mcpc",
+        time,
+        &json!({ "call_id": call_id, "server": server, "tool": tool }),
+    )
+}
+
+/// Whole milliseconds from `mcp_tool_call_end`'s own `duration` -- a serialized Rust
+/// `Duration`, `{secs, nanos}` -- the vendor's own measurement, not an interval this
+/// module closes itself the way [`transform_tool_output`]'s `duration_ms` is.
+///
+/// `None` -- emitted as a literal `null`, never `0` -- when either half is missing or is
+/// not a whole non-negative number. A `0` here would be indistinguishable from an MCP
+/// call that genuinely returned within a millisecond, which is the exact mistake this
+/// project has already removed seven fabricated instances of.
+fn mcp_duration_ms(duration: Option<&Value>) -> Option<u64> {
+    let duration = duration?;
+    let secs = duration.get("secs").and_then(Value::as_u64)?;
+    let nanos = duration.get("nanos").and_then(Value::as_u64)?;
+    Some(secs.saturating_mul(1_000).saturating_add(nanos / 1_000_000))
 }
 
 /// `session/<ses>/tool/<scope>`, or `tool/<scope>` when the session is unresolved.
@@ -585,6 +703,21 @@ mod tests {
                 payload["content"] = json!("SYNTHETIC prompt");
             }
             "token_count" => payload["info"] = json!({ "total_tokens": 1 }),
+            "mcp_tool_call_end" => {
+                payload["call_id"] = json!("mcpc_1");
+                payload["connector_id"] = json!("conn_1");
+                payload["plugin_id"] = json!("plugin_1");
+                payload["link_id"] = json!("link_1");
+                payload["app_name"] = json!("SYNTHETIC app");
+                payload["action_name"] = json!("SYNTHETIC action");
+                payload["invocation"] = json!({
+                    "server": "synthetic-server",
+                    "tool": "synthetic_tool",
+                    "arguments": { "SYNTHETIC": "input" }
+                });
+                payload["duration"] = json!({ "secs": 1, "nanos": 0 });
+                payload["result"] = json!({ "SYNTHETIC": "output" });
+            }
             _ => {}
         }
         json!({
@@ -604,6 +737,40 @@ mod tests {
         assert_eq!(drafts[0].event_type, "dev.cclog.prompt.submitted.v1");
         assert_eq!(drafts[0].workspace_ref.as_deref(), Some("wsp_TEST"));
         assert_eq!(drafts[0].repository_ref.as_deref(), Some("rep_TEST"));
+    }
+
+    #[test]
+    fn a_prompts_origin_is_subagent_only_when_the_keystore_names_its_session_one() {
+        // `codex_subagent_session` is a cross-file fact the importer's pre-pass
+        // registers -- never derived from anything on this one record -- under the
+        // same keys `"session"` is, so it is looked up the same way: by
+        // `session_key(payload)`, "sess-1" for every record `user_message` builds
+        // here.
+        let unregistered = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &ks(),
+        );
+        assert_eq!(unregistered[0].data["origin"], "human");
+
+        let subagent_ks = ks().map("codex_subagent_session", "sess-1", "subagent");
+        let subagent = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &subagent_ks,
+        );
+        assert_eq!(subagent[0].data["origin"], "subagent");
+
+        // Presence is the whole fact -- the interface never reads the value. A match
+        // on `Some("subagent")` instead of `Some(_)` would pass the assertion above
+        // and still be wrong; this is what tells the two apart.
+        let odd_value_ks = ks().map("codex_subagent_session", "sess-1", "anything-at-all");
+        let odd = transform(
+            &user_message("2026-08-01T00:00:00.000Z", "hello", "c1"),
+            &odd_value_ks,
+        );
+        assert_eq!(
+            odd[0].data["origin"], "subagent",
+            "presence in the keystore must be the whole fact, not a specific matched value"
+        );
     }
 
     #[test]
@@ -861,5 +1028,177 @@ mod tests {
             "the identity must hash the message with its keys sorted, whatever order \
              the transcript wrote them in -- and over exactly `timestamp|message`"
         );
+    }
+
+    /// A synthetic `mcp_tool_call_end` record carrying every field the real shape
+    /// does. `duration` is a parameter so callers can exercise both a well-formed
+    /// `{secs, nanos}` object and the malformed shapes [`mcp_duration_ms`] must turn
+    /// into `null`.
+    ///
+    /// Carries `session_id: "sess-1"` even though a real `mcp_tool_call_end` never
+    /// does (like every non-`session_meta` Codex record -- see [`FILE_SESSION`]'s doc
+    /// comment). This mirrors [`user_message`]'s own factory, which makes the same
+    /// deliberate departure for the same reason: without it, `session_ref`/
+    /// `identity_refs` resolve to `None` for every record this factory builds, and a
+    /// unit test built on top of it cannot tell a real `workspace_ref`/`subject` apart
+    /// from one that silently stopped resolving. `ks()` maps `"sess-1"` to
+    /// `ses_TEST`/`wsp_TEST`/`rep_TEST`, so this makes those resolvable the same way
+    /// the golden fixture's `FILE_SESSION` fallback already does.
+    fn mcp_tool_call_end(call_id: &str, duration: Value) -> Value {
+        json!({
+            "type": "event_msg",
+            "timestamp": "2026-08-01T00:00:00.000Z",
+            "payload": {
+                "type": "mcp_tool_call_end",
+                "call_id": call_id,
+                "session_id": "sess-1",
+                "connector_id": "conn_1",
+                "plugin_id": "plugin_1",
+                "link_id": "link_1",
+                "app_name": "SYNTHETIC app",
+                "action_name": "SYNTHETIC action",
+                "invocation": {
+                    "server": "synthetic-server",
+                    "tool": "synthetic_tool",
+                    "arguments": { "SYNTHETIC": "input" }
+                },
+                "duration": duration,
+                "result": { "SYNTHETIC": "output" }
+            }
+        })
+    }
+
+    #[test]
+    fn an_mcp_tool_call_end_becomes_one_finished_mcp_tool_event() {
+        // "call_9" is deliberately unregistered in `ks()`, so this exercises
+        // `mcp_tool_scope`'s fallback -- the branch that runs for effectively every
+        // real MCP call today (`CodexPreScan::observe` does not yet register one under
+        // `"tool"`) -- and pins every field that branch produces, not just
+        // `duration_ms`/`tool_family`.
+        let record = mcp_tool_call_end("call_9", json!({ "secs": 2, "nanos": 500_000_000 }));
+        let drafts = transform(&record, &ks());
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].event_type, "dev.cclog.tool.finished.v1");
+        assert_eq!(drafts[0].data["tool_family"], "mcp");
+        assert_eq!(
+            drafts[0].data["duration_ms"], 2500,
+            "duration.secs * 1000 + duration.nanos / 1_000_000"
+        );
+        // This record shape carries no `success`/`status` -- the two fields
+        // `output_outcome` reads -- so the honest answer is `"unknown"`, never a
+        // hardcoded `"succeeded"`. An MCP call that reached this arm has not thereby
+        // succeeded, and a fabricated verdict here is exactly the class of mistake
+        // this project has already removed seven instances of.
+        assert_eq!(
+            drafts[0].data["outcome"], "unknown",
+            "a verdict this record shape cannot support must be reported as unknown, \
+             not assumed to be success"
+        );
+        // `workspace_ref`/`repository_ref`/`subject` all come from the same
+        // `session_ref`/`identity_refs` resolution every other Codex tool kind goes
+        // through. Pinned here so a regression that drops either (e.g. a hardcoded
+        // `(None, None)`) cannot hide behind a test record that never gave them
+        // anything to resolve.
+        assert_eq!(drafts[0].data["workspace_ref"], "wsp_TEST");
+        assert_eq!(drafts[0].repository_ref.as_deref(), Some("rep_TEST"));
+        // Reconstructed independently of `mcp_tool_scope`/`content_identity`
+        // themselves, the same way `an_object_valued_message_hashes_its_keys_in_sorted_order`
+        // pins a prompt's identity: the real `pseudonymize` primitive, over a
+        // hand-written canonical string, so a mutation that changed which fields feed
+        // the hash (or their order, or the prefix) would show up here even though
+        // nothing about the hash *output* is otherwise meaningful.
+        assert_eq!(
+            drafts[0].subject,
+            format!(
+                "session/ses_TEST/tool/{}",
+                pseudonymize(
+                    "mcpc",
+                    r#"2026-08-01T00:00:00.000Z|{"call_id":"call_9","server":"synthetic-server","tool":"synthetic_tool"}"#
+                )
+            ),
+            "the fallback identity must be built from call_id/server/tool only"
+        );
+    }
+
+    #[test]
+    fn an_mcp_call_with_a_registered_id_resolves_through_the_existing_tool_channel() {
+        // `ks()` registers "call_1" under the same `"tool"` Keystore key
+        // `custom_tool_call`/`function_call` resolve through via `call_key`/`tool_scope`
+        // -- proving an MCP call reuses that channel rather than a second one, exactly
+        // as `a_tool_call_with_only_a_call_id_still_gets_a_stable_identity` proves it
+        // for `custom_tool_call`.
+        let record = mcp_tool_call_end("call_1", json!({ "secs": 1, "nanos": 0 }));
+        let drafts = transform(&record, &ks());
+        assert_eq!(
+            drafts[0].dedupe_seed,
+            vec![
+                "ses_TEST".to_string(),
+                "tool.finished".to_string(),
+                "tol_TEST".to_string()
+            ],
+            "a registered call id must resolve to the same ref other tool kinds use"
+        );
+    }
+
+    #[test]
+    fn mcp_duration_is_null_never_zero_when_unmeasurable() {
+        for bad in [
+            json!({ "nanos": 0 }),              // secs missing
+            json!({ "secs": 1 }),               // nanos missing
+            json!({ "secs": "1", "nanos": 0 }), // wrong type
+            json!("2s"),                        // not an object at all
+            Value::Null,                        // absent
+        ] {
+            let record = mcp_tool_call_end("call_9", bad.clone());
+            let drafts = transform(&record, &ks());
+            assert_eq!(
+                drafts[0].data["duration_ms"],
+                Value::Null,
+                "duration {bad:?} is unmeasurable and must yield null, never 0"
+            );
+        }
+    }
+
+    #[test]
+    fn a_genuinely_zero_mcp_duration_is_reported_as_zero_not_folded_into_unmeasurable() {
+        // `{secs: 0, nanos: 0}` is present and parseable -- a real measurement of a
+        // call that returned within a millisecond -- and must be told apart from the
+        // `null` the test above pins for a duration that could not be read at all.
+        let record = mcp_tool_call_end("call_9", json!({ "secs": 0, "nanos": 0 }));
+        let drafts = transform(&record, &ks());
+        assert_eq!(drafts[0].data["duration_ms"], 0);
+    }
+
+    #[test]
+    fn changing_arguments_or_result_never_changes_an_unregistered_calls_identity_or_data() {
+        // "call_9" is deliberately not registered in `ks()`, so this exercises
+        // `mcp_tool_scope`'s fallback -- the path a real import takes for every MCP
+        // call today, since `CodexPreScan::observe` does not (yet) observe
+        // `mcp_tool_call_end`. If that fallback ever changed to hash the whole payload
+        // the way `tool_scope`'s does (or `arguments`/`result` leaked into `data`),
+        // this is what would catch it: the two records below differ only in
+        // `invocation.arguments` and `result`, and nothing about the draft may move.
+        let quiet = mcp_tool_call_end("call_9", json!({ "secs": 1, "nanos": 0 }));
+        let mut loud = quiet.clone();
+        loud["payload"]["invocation"]["arguments"] =
+            json!("a much longer and totally different secret input payload");
+        loud["payload"]["result"] =
+            json!("a much longer and totally different secret result payload");
+
+        let a = transform(&quiet, &ks());
+        let b = transform(&loud, &ks());
+        assert_eq!(
+            a[0].dedupe_seed, b[0].dedupe_seed,
+            "arguments/result must never affect an MCP call's identity"
+        );
+        assert_eq!(
+            a[0].data, b[0].data,
+            "arguments/result must never affect an MCP call's data"
+        );
+
+        let rendered = serde_json::to_string(&a[0].data).unwrap()
+            + &a[0].dedupe_seed.join("|")
+            + &a[0].subject;
+        assert!(!rendered.contains("secret"));
     }
 }

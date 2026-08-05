@@ -554,18 +554,23 @@ impl Ledger {
     /// wider than the instant it names, never narrower, and apply the exact
     /// comparison itself after parsing. `cclogger-cli`'s report does both.
     ///
-    /// Reads the promoted columns, plus the three JSON `body` fields a day view needs:
-    /// the subject, the tool family, and the time basis. The rest of the body is left
-    /// in the database -- a report groups and clocks on the promoted fields, and a day
-    /// of the real corpus is ~7,500 rows whose bodies are not wanted. All three are
-    /// pulled out in SQL rather than by returning `body` and parsing it, so the bytes
-    /// that never leave the database stay in it, and `json_extract` yields `NULL` for a
-    /// missing key either way.
+    /// Reads the promoted columns, plus the four JSON `body` fields a day view needs:
+    /// the subject, the tool family, the time basis, and the prompt origin. The rest of
+    /// the body is left in the database -- a report groups and clocks on the promoted
+    /// fields, and a day of the real corpus is ~7,500 rows whose bodies are not wanted.
+    /// All four are pulled out in SQL rather than by returning `body` and parsing it, so
+    /// the bytes that never leave the database stay in it, and `json_extract` yields
+    /// `NULL` for a missing key either way.
     ///
     /// `time_basis` is read here rather than left to a caller because it decides
     /// whether a row may go on a clock at all -- a row whose time is the write time of
     /// a copy, or of an archive run, is not evidence of activity at that instant. A
     /// caller that could not see it would silently clock those.
+    ///
+    /// `origin` is read here for the same reason: it decides whether a prompt may
+    /// *anchor* a clock, once a row has already been admitted onto one. A caller that
+    /// could not see it would have no way to tell a human's own prompt from a
+    /// subagent's dispatch to itself, and would anchor an attention window on both.
     ///
     /// `subject` is read for the one question that cannot be answered from the promoted
     /// columns: which *session* a row belongs to. Two observations in the same
@@ -581,7 +586,8 @@ impl Ledger {
             "SELECT source_kind, event_type, occurred_at, repository_ref,
                     json_extract(body, '$.subject'),
                     json_extract(body, '$.data.tool_family'),
-                    json_extract(body, '$.data.time_basis')
+                    json_extract(body, '$.data.time_basis'),
+                    json_extract(body, '$.data.origin')
              FROM observation
              WHERE occurred_at >= ?1 AND occurred_at < ?2
              ORDER BY occurred_at ASC",
@@ -595,6 +601,7 @@ impl Ledger {
                 subject: row.get(4)?,
                 tool_family: row.get(5)?,
                 time_basis: row.get(6)?,
+                origin: row.get(7)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -1061,7 +1068,8 @@ pub struct Checkpoint {
 }
 
 /// One observation as a query reads it back: the promoted columns, plus the tool
-/// family out of the JSON `body`. See [`Ledger::observations_between`].
+/// family, time basis and prompt origin out of the JSON `body`. See
+/// [`Ledger::observations_between`].
 ///
 /// `repository_ref` is the opaque pseudonym (`rep_…`), not a name --
 /// [`Ledger::identities`] maps it to the normalized identity it stands for. `None`
@@ -1098,6 +1106,21 @@ pub struct ObservationRow {
     /// the field says the same ("a consumer bucketing gaps into day windows must treat
     /// `acquired_at` markers separately or exclude them").
     pub time_basis: Option<String>,
+    /// Who submitted a prompt, out of `data.origin`: `"human"`, `"subagent"` when a
+    /// subagent dispatched itself its own prompt, or (once cclog acquires a scheduler)
+    /// `"scheduled"`. `None` on every event that is not a prompt, and on a prompt whose
+    /// producer wrote no `origin` at all.
+    ///
+    /// That second `None` is not the rare case. `Ledger::ingest` is
+    /// `INSERT ... ON CONFLICT(cclogdedupekey) DO NOTHING`, and there is no
+    /// `UPDATE observation` anywhere in this crate, so every observation imported
+    /// before this field existed keeps a `data` object with no `origin` key forever --
+    /// re-archiving and re-importing the same file again is a no-op for a dedupe key
+    /// the ledger already holds. Every Claude Code prompt is among these `None`s
+    /// regardless of age, since only the Codex adapter writes this field at all. A
+    /// consumer must therefore read `None` the same way it reads `Some("human")`; see
+    /// `cclogger-cli`'s `report.rs`, which is the one that decides.
+    pub origin: Option<String>,
 }
 
 /// The span of time one source's observations cover in this ledger. See
@@ -2455,6 +2478,60 @@ mod tests {
         assert_eq!(event_type, "dev.cclog.tool.started.v1");
         assert_eq!(occurred_at, "2026-07-29T00:00:00.000Z");
         assert_eq!(source_kind, "claude-code");
+    }
+
+    #[test]
+    fn observations_between_reads_origin_the_same_way_it_reads_tool_family() {
+        // The mechanism is the one `tool_family` and `time_basis` already use:
+        // promoted via `json_extract(body, '$.data.<field>')` in the same `SELECT`,
+        // not a second path. Pinned directly here, at the SQL boundary, because
+        // `cclogger-cli`'s report and log decide who anchors an attention window from
+        // this column alone -- a wiring bug here (an off-by-one column index, say)
+        // would silently read a neighbouring column's value as `origin` and neither
+        // module's tests would ever see the real cause.
+        let mut a = Ledger::open(&tmp("obs-origin")).unwrap();
+        let mut stated = observation(
+            "obs-origin-1",
+            "codex|dev_test|ses_test|origin|1",
+            "dev.cclog.prompt.submitted.v1",
+            "2026-07-29T00:00:00.000Z",
+        );
+        stated.data = json!({ "content_ref": null, "origin": "subagent" });
+        let mut unstated = observation(
+            "obs-origin-2",
+            "codex|dev_test|ses_test|origin|2",
+            "dev.cclog.prompt.submitted.v1",
+            "2026-07-29T00:00:01.000Z",
+        );
+        // No `origin` key at all -- the shape every observation ingested before this
+        // field existed keeps forever, `ON CONFLICT(cclogdedupekey) DO NOTHING` and no
+        // `UPDATE observation` anywhere meaning re-import cannot add it after the fact.
+        unstated.data = json!({ "content_ref": null });
+
+        a.ingest(
+            snapshot_ref("p/origin.jsonl", b"origin bytes", "2026-07-29T00:00:00Z"),
+            &[stated, unstated],
+            CheckpointAdvance {
+                cursor: None,
+                updated_at: "2026-07-29T00:00:00Z",
+            },
+        )
+        .unwrap();
+
+        let rows = a
+            .observations_between("2026-07-29T00:00:00", "2026-07-29T00:00:02")
+            .unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(
+            rows[0].origin.as_deref(),
+            Some("subagent"),
+            "a stated origin must reach the row, not just the stored body"
+        );
+        assert_eq!(
+            rows[1].origin, None,
+            "a record with no origin key at all must read back as None, not a \
+             guessed default -- absence is what most of an existing ledger has"
+        );
     }
 
     #[test]

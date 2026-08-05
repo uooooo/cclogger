@@ -104,7 +104,8 @@
       "cclogrepositoryref": "rep_e1dcaa3496b93562cbcd",
       "data": {
         "content_ref": null,
-        "time_basis": "copied_at"
+        "time_basis": "copied_at",
+        "origin": "human"
       }
     },
     {
@@ -131,7 +132,8 @@
       "cclogworkspaceref": "wsp_e1dcaa3496b93562cbcd",
       "cclogrepositoryref": "rep_e1dcaa3496b93562cbcd",
       "data": {
-        "content_ref": null
+        "content_ref": null,
+        "origin": "human"
       }
     }
   ]
