@@ -34,3 +34,4 @@ bun.lockb
 
 # subagent-driven-development の作業スクラッチ（plan ごとの進捗台帳・briefs・review package）
 .superpowers/
+.worktrees/
