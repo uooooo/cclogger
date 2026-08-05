@@ -86,6 +86,11 @@ fn keystore() -> Keystore {
         .map("workspace", SUBAGENT_SESSION_ID, "wsp_XYZ1")
         .map("repository", SUBAGENT_SESSION_ID, "rep_ACME")
         .map("codex_subagent_session", SUBAGENT_SESSION_ID, "subagent")
+        // `measured-turn.fixture.json`'s task_started/task_complete pair, both keyed
+        // by `turn_id` -- mirroring exactly what a real `CodexPreScan` registers from
+        // the file's own `task_started` (see `codex_history`'s "Turn duration" module
+        // doc). The value is the vendor's own `started_at`, verbatim, in seconds.
+        .map("codex_turn_started_at", "turn_synthetic0001", "1784520600")
 }
 
 fn check(name: &str) {
@@ -154,6 +159,17 @@ fn subagent_prompt_origin() {
 #[test]
 fn mcp_tool_call() {
     check("mcp-tool-call.fixture.json");
+}
+
+/// `task_complete` is the one Codex record that hands back a measurement instead of a
+/// write time: its own `duration_ms`, which this test pins comes through unchanged
+/// rather than being recomputed from the pair's two envelope timestamps. `task_started`
+/// -- present in the fixture's `records`, sharing `turn_id` -- produces no observation
+/// of its own; its only role is the `codex_turn_started_at` corroboration `keystore()`
+/// registers by hand here, exactly as a real `CodexPreScan` would from the same file.
+#[test]
+fn measured_turn() {
+    check("measured-turn.fixture.json");
 }
 
 /// The two `event_msg:user_message` records in `history-prompt.fixture.json` differ

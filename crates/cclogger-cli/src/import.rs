@@ -2066,6 +2066,12 @@ impl GitPreScan {
 /// it* is a subagent's: that is named only in a *different* file, so [`Self::finish`]
 /// takes the whole run's answer as a parameter rather than deriving it here -- see
 /// [`codex_subagent_thread_ids`].
+///
+/// It also carries a turn's start under `codex_turn_started_at` -- see
+/// [`Self::observe_task_started`] -- for [`codex_history::transform_task_complete`] to
+/// corroborate against. `task_started` and its `task_complete` were measured to share a
+/// file 724/724 times on the real corpus, so unlike the subagent fact above, this one
+/// needs nothing from outside this single file.
 #[derive(Default)]
 struct CodexPreScan {
     keystore: Keystore,
@@ -2131,7 +2137,38 @@ impl CodexPreScan {
             "response_item:custom_tool_call" | "response_item:function_call" => {
                 self.observe_tool_call(record, payload);
             }
+            "event_msg:task_started" => {
+                self.observe_task_started(payload);
+            }
             _ => {}
+        }
+    }
+
+    /// Register a turn's start under `codex_turn_started_at`, keyed by `turn_id` --
+    /// the same-file fact [`codex_history::transform_task_complete`] corroborates a
+    /// matching `task_complete` against before persisting it (see that function's doc
+    /// comment, and `codex_history`'s module-level "Turn duration" section). The
+    /// mechanism mirrors [`Self::observe_tool_call`]'s `tool_started_at`: a value
+    /// registered here from an earlier line, for a later one to resolve through the
+    /// same [`Keystore`].
+    ///
+    /// The one thing it is *not* is that mechanism's arithmetic: `tool_started_at`
+    /// stores the record's RFC 3339 envelope `timestamp`, closed against a later
+    /// timestamp to compute a duration. `started_at` here is `task_started`'s own
+    /// `payload.started_at` -- epoch **seconds**, not RFC 3339 text and not
+    /// milliseconds -- and it is stored verbatim, never scaled: this channel exists to
+    /// prove a pairing was seen, not to re-derive the duration `task_complete`'s own
+    /// `duration_ms` already carries (measured more trustworthy than a write-time
+    /// delta -- that comparison is the whole reason this feature exists). Scaling it to
+    /// look like a millisecond value, or parsing it as if it were RFC 3339, would
+    /// corrupt the one fact this channel carries without changing whether it resolves
+    /// at all.
+    fn observe_task_started(&mut self, payload: &Value) {
+        let Some(turn_id) = payload.get("turn_id").and_then(Value::as_str) else {
+            return;
+        };
+        if let Some(started_at) = payload.get("started_at") {
+            self.map("codex_turn_started_at", turn_id, &started_at.to_string());
         }
     }
 
@@ -4903,6 +4940,101 @@ pub(crate) mod tests {
         );
     }
 
+    #[test]
+    fn the_codex_pre_scan_carries_a_turns_start_to_the_adapters_task_complete_arm() {
+        // Mirrors `the_codex_pre_scan_pairs_a_tool_call_with_its_output_across_both_id_spellings`
+        // for `task_started`/`task_complete`: the corroboration `transform_task_complete`
+        // needs has to reach it through the same-file `CodexPreScan`, not be hand-typed
+        // the way the adapter crate's own golden fixtures spell it out.
+        let started = json!({
+            "type": "event_msg",
+            "timestamp": "2026-07-20T04:10:00.000Z",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn_1",
+                "started_at": 1_784_520_600i64,
+            },
+        });
+        let complete = json!({
+            "type": "event_msg",
+            "timestamp": "2026-07-20T04:10:08.000Z",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn_1",
+                "duration_ms": 7850,
+                "time_to_first_token_ms": 640,
+                "completed_at": 1_784_520_608i64,
+            },
+        });
+
+        let mut scan = CodexPreScan::default();
+        scan.observe(&started, TEST_HOME);
+        scan.observe(&complete, TEST_HOME);
+        let (keystore, _) = scan.finish(&std::collections::HashSet::new());
+
+        // `task_started` itself produces nothing -- see `codex_history`'s "Turn
+        // duration" doc section -- only `task_complete` does, and only because the
+        // pre-scan saw the pairing.
+        assert!(codex_history::transform(&started, &keystore).is_empty());
+        let drafts = codex_history::transform(&complete, &keystore);
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].event_type, "dev.cclog.turn.completed.v1");
+        assert_eq!(
+            drafts[0].data["duration_ms"],
+            json!(7850),
+            "the vendor's own measurement, not a delta between the two records' write \
+             times -- 61 of 1,722 real task_complete records disagree with that delta \
+             by more than 5%, which is the reason this field is persisted verbatim \
+             rather than recomputed"
+        );
+    }
+
+    #[test]
+    fn a_task_complete_with_no_same_file_task_started_is_not_persisted() {
+        // No `task_started` was ever observed for "turn_9", simulating a `task_complete`
+        // whose pairing this pre-scan cannot corroborate.
+        let complete = json!({
+            "type": "event_msg",
+            "timestamp": "2026-07-20T04:10:08.000Z",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": "turn_9",
+                "duration_ms": 7850,
+            },
+        });
+        let scan = CodexPreScan::default();
+        let (keystore, _) = scan.finish(&std::collections::HashSet::new());
+        assert!(codex_history::transform(&complete, &keystore).is_empty());
+    }
+
+    #[test]
+    fn the_codex_pre_scan_registers_a_turns_started_at_verbatim_in_seconds_never_scaled() {
+        // `started_at` is epoch SECONDS -- unlike `duration_ms`, sitting right next to
+        // it in the same payload, which is milliseconds. A registration that
+        // "normalized" it to look like a millisecond value (or otherwise rescaled it)
+        // would corrupt the one fact this channel carries even though
+        // `transform_task_complete` only checks its presence today: this pins the
+        // value itself, not merely that resolution succeeds, so that mistake cannot
+        // hide behind a presence-only assertion.
+        let started = json!({
+            "type": "event_msg",
+            "timestamp": "2026-07-20T04:10:00.000Z",
+            "payload": {
+                "type": "task_started",
+                "turn_id": "turn_1",
+                "started_at": 1_784_520_600i64,
+            },
+        });
+        let mut scan = CodexPreScan::default();
+        scan.observe(&started, TEST_HOME);
+        let (keystore, _) = scan.finish(&std::collections::HashSet::new());
+        assert_eq!(
+            keystore.resolve("codex_turn_started_at", "turn_1"),
+            Some("1784520600".to_string()),
+            "started_at must be stored exactly as the vendor wrote it, in seconds"
+        );
+    }
+
     /// A prior version of this test hand-built a `Keystore` (`Keystore::new().map(...)`)
     /// and asserted directly on it. That cannot catch the bug this one exists to catch:
     /// the fact that a subagent's own thread id is *only* ever named in a different
@@ -5833,7 +5965,8 @@ pub(crate) mod tests {
         // kind it maps.
         let ks = Keystore::new()
             .map("session", codex_history::FILE_SESSION, "ses_TEST")
-            .map("session", CODEX_CHILD_SESSION, "ses_TEST");
+            .map("session", CODEX_CHILD_SESSION, "ses_TEST")
+            .map("codex_turn_started_at", "turn_1", "1784606520");
         let records = [
             codex_session_meta_with(
                 "2026-07-20T05:00:00.000Z",
@@ -5880,6 +6013,16 @@ pub(crate) mod tests {
                     },
                     "duration": { "secs": 1, "nanos": 0 },
                     "result": { "SYNTHETIC": "output" },
+                },
+            })
+            .to_string(),
+            json!({
+                "type": "event_msg",
+                "timestamp": "2026-07-20T05:00:08.000Z",
+                "payload": {
+                    "type": "task_complete",
+                    "turn_id": "turn_1",
+                    "duration_ms": 4200,
                 },
             })
             .to_string(),

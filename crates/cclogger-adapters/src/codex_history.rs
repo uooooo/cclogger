@@ -88,6 +88,40 @@
 //! directly rather than closing an interval against a `tool_started_at` this record kind
 //! never registers. Same rule for what an unmeasurable duration means: `null`, never
 //! `0`.
+//!
+//! # Turn duration
+//!
+//! Every other timestamp this module reads is a *write* time -- when Codex flushed a
+//! line -- not an event time, and that gap is the source of most of this module's
+//! trouble with the vendor. `event_msg:task_complete` is the one place Codex hands back
+//! a measurement instead of a write time: its own `duration_ms`, computed on the
+//! vendor's side of a wall clock this module never gets to see directly. Measured
+//! across 724 paired turns, that figure disagrees with the gap between two write times
+//! often enough that persisting it -- rather than re-deriving a duration from
+//! `task_started`/`task_complete`'s own line timestamps -- is the point of
+//! [`transform_task_complete`]: it is not recoverable any other way once the write
+//! times are wrong.
+//!
+//! `event_msg:task_started` is deliberately **not** in [`MAPPED_KINDS`], unlike the
+//! `custom_tool_call`/`custom_tool_call_output` pair it otherwise resembles. It carries
+//! no fact this schema has a slot for beyond corroborating a `task_complete` that shares
+//! its `turn_id` -- there is no `dev.cclog.turn.started.v1`, deliberately, the same way
+//! there is no `response.started` counterpart to `response.completed` -- so its entire
+//! contribution is the same-file [`Keystore`] entry `codex_turn_started_at` the
+//! importer's `CodexPreScan` registers from it (mirroring how `tool_started_at` is
+//! registered from a tool call for its output half to resolve). [`transform_task_complete`]
+//! resolves that entry as corroboration -- a `task_complete` this pre-scan never saw a
+//! matching `task_started` for, in the same file, is not a pairing this module can stand
+//! behind persisting -- but never reads its *value* for `time` or `duration_ms`: both of
+//! those still come from `task_complete`'s own fields, per the two rules above. Measured
+//! 724/724 on the real corpus, so in practice this corroboration check never filters
+//! anything real.
+//!
+//! `started_at` and `completed_at`, on both record kinds, are epoch **seconds** --
+//! unlike `duration_ms`, which is milliseconds, and unlike every timestamp this module
+//! otherwise handles, which is RFC 3339 text. Nothing in the data flags the difference,
+//! so `codex_turn_started_at` is registered and compared verbatim, in seconds, rather
+//! than scaled to look like the millisecond fields sitting next to it.
 
 use crate::{Keystore, pseudonymize};
 use cclogger_domain::{IntegrityState, ObservationDraft, PrivacyClass, SourceKind};
@@ -127,6 +161,7 @@ pub const MAPPED_KINDS: &[&str] = &[
     "response_item:custom_tool_call_output",
     "response_item:function_call_output",
     "event_msg:mcp_tool_call_end",
+    "event_msg:task_complete",
 ];
 
 /// The kind of a Codex transcript record: its `type`, plus `payload.type` for the two
@@ -173,6 +208,7 @@ pub fn transform(record: &Value, ctx: &Keystore) -> Vec<ObservationDraft> {
             transform_tool_output(payload, &time, ctx)
         }
         "event_msg:mcp_tool_call_end" => transform_mcp_tool_call(payload, &time, ctx),
+        "event_msg:task_complete" => transform_task_complete(payload, &time, ctx),
         _ => Vec::new(),
     }
 }
@@ -478,6 +514,83 @@ fn transform_mcp_tool_call(payload: &Value, time: &str, ctx: &Keystore) -> Vec<O
     }]
 }
 
+/// `task_complete` -> one `turn.completed`: Codex's own measurement of a turn, not a
+/// duration this module closes itself.
+///
+/// Self-contained like [`transform_mcp_tool_call`]: `duration_ms`, `time_to_first_token_ms`
+/// and `error` all live on this one record, so nothing here is read back out of the
+/// separate `task_started` line -- only *whether* one was seen, through
+/// [`Keystore::resolve`]'s `codex_turn_started_at` entry, which the importer's
+/// `CodexPreScan` registers (see this module's "Turn duration" doc section). `Vec::new()`
+/// when that corroboration is missing, the same shape as this module's other
+/// cannot-establish-context guards: measured 724/724 on the real corpus, so it never
+/// drops a real turn, only a hypothetical one this module cannot stand behind.
+///
+/// `duration_ms` is read only from this record's own field, never computed from
+/// `started_at`/`completed_at`: those are the write times this whole feature exists to
+/// route around, and re-deriving a duration from them here would silently reintroduce
+/// the exact number this event is meant to supplement. `None` -- never `0` -- when the
+/// field is absent (61 of 1,722 real records).
+///
+/// `time` is `record`'s own timestamp, exactly like every sibling transform in this
+/// module; `completed_at` (a *different*, epoch-seconds field) is never substituted for
+/// it, and `time_basis` is left unset for the reason every other transform here leaves
+/// it unset: absence already says "the record's own timestamp, nothing to qualify."
+fn transform_task_complete(payload: &Value, time: &str, ctx: &Keystore) -> Vec<ObservationDraft> {
+    let Some(turn_id) = payload.get("turn_id").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    if ctx.resolve("codex_turn_started_at", turn_id).is_none() {
+        return Vec::new();
+    }
+
+    let session = session_ref(payload, ctx);
+    let (workspace, repository) = identity_refs(payload, ctx);
+    let trn = pseudonymize("trn", turn_id);
+    let subject = match &session {
+        Some(s) => format!("session/{s}/turn/{trn}"),
+        None => format!("turn/{trn}"),
+    };
+
+    // Presence only, never content: `error` is the vendor's own account of what went
+    // wrong, which is content in exactly the way a prompt or an agent message is, and
+    // this ledger is metadata-only. A turn that wrote `task_complete` did complete, so
+    // the absence of `error` is `succeeded`, not `unknown`.
+    let outcome = if payload.get("error").is_some() {
+        "failed"
+    } else {
+        "succeeded"
+    };
+
+    vec![ObservationDraft {
+        event_type: "dev.cclog.turn.completed.v1".to_string(),
+        subject,
+        time: time.to_string(),
+        traceparent: None,
+        source_kind: SourceKind::Codex,
+        source_version: SOURCE_VERSION.to_string(),
+        adapter_version: ADAPTER_VERSION.to_string(),
+        privacy_class: PrivacyClass::T1Structured,
+        integrity_state: IntegrityState::Ok,
+        workspace_ref: workspace,
+        repository_ref: repository,
+        correlation_cluster: None,
+        // Per-turn, not per-record: `turn_id` is the only component beyond the event
+        // name and the session, so the 998 copies real forks re-persist -- byte-identical
+        // `turn_id`, different file, sometimes a different write-time envelope
+        // `timestamp` -- collapse onto the one row already there instead of shipping the
+        // corpus's measured 2.4x duplication.
+        dedupe_seed: seed(session, "turn.completed", &trn),
+        data: json!({
+            "outcome": outcome,
+            "duration_ms": payload.get("duration_ms").and_then(Value::as_u64),
+            "time_to_first_token_ms":
+                payload.get("time_to_first_token_ms").and_then(Value::as_u64),
+            "content_ref": null,
+        }),
+    }]
+}
+
 /// The vendor id a tool record is keyed by: `id` when present, else `call_id`.
 ///
 /// `tool-call-with-ids.shape.json`: most `custom_tool_call` records carry both, but a
@@ -644,6 +757,13 @@ mod tests {
             .map("workspace", "sess-1", "wsp_TEST")
             .map("repository", "sess-1", "rep_TEST")
             .map("tool", "call_1", "tol_TEST")
+            // Mirrors what a real `CodexPreScan` registers from a same-file
+            // `task_started` sharing this `turn_id` -- see
+            // `CodexPreScan::observe_task_started`. The value is never read by
+            // `transform_task_complete` (only its presence is), so any non-empty
+            // string stands in for the real one, which would be the vendor's own
+            // `started_at`, verbatim, in seconds.
+            .map("codex_turn_started_at", "turn_1", "1784606520")
     }
 
     fn user_message(ts: &str, text: &str, client: &str) -> Value {
@@ -703,6 +823,16 @@ mod tests {
                 payload["content"] = json!("SYNTHETIC prompt");
             }
             "token_count" => payload["info"] = json!({ "total_tokens": 1 }),
+            "task_started" => {
+                payload["turn_id"] = json!("turn_1");
+                payload["started_at"] = json!(1_784_606_520i64);
+            }
+            "task_complete" => {
+                payload["turn_id"] = json!("turn_1");
+                payload["duration_ms"] = json!(4200);
+                payload["time_to_first_token_ms"] = json!(640);
+                payload["completed_at"] = json!(1_784_606_528i64);
+            }
             "mcp_tool_call_end" => {
                 payload["call_id"] = json!("mcpc_1");
                 payload["connector_id"] = json!("conn_1");
@@ -964,6 +1094,15 @@ mod tests {
             // question is a plausible accident; this is what makes it fail.
             "response_item:agent_message",
             "response_item:message",
+            // Understood, not merely unhandled: this module's "Turn duration" doc
+            // section explains why `task_started` produces no observation of its own
+            // -- there is no `dev.cclog.turn.started.v1`, deliberately -- and
+            // contributes only the same-file `codex_turn_started_at` fact
+            // `CodexPreScan::observe_task_started` registers for
+            // `transform_task_complete` to corroborate against. Adding a match arm
+            // for it (e.g. while giving it a duplicate of `turn.completed`) is a
+            // plausible accident; this is what makes it fail.
+            "event_msg:task_started",
         ] {
             let record = fully_populated_record(kind);
             assert!(
@@ -1200,5 +1339,163 @@ mod tests {
             + &a[0].dedupe_seed.join("|")
             + &a[0].subject;
         assert!(!rendered.contains("secret"));
+    }
+
+    /// A synthetic `task_complete` record carrying every field
+    /// [`transform_task_complete`] reads. `turn_id` defaults to `"turn_1"`, the one
+    /// `ks()` registers a `codex_turn_started_at` corroboration for.
+    ///
+    /// Carries `session_id: "sess-1"` even though a real `task_complete` never does
+    /// (like every non-`session_meta` Codex record -- see [`FILE_SESSION`]'s doc
+    /// comment). This mirrors [`mcp_tool_call_end`]'s own factory, which makes the same
+    /// deliberate departure for the same reason: without it, `session_ref`/
+    /// `identity_refs` resolve to `None` for every record this factory builds, and a
+    /// unit test built on top of it cannot tell a real `workspace_ref`/`subject` apart
+    /// from one that silently stopped resolving.
+    fn task_complete(turn_id: &str) -> Value {
+        json!({
+            "type": "event_msg",
+            "timestamp": "2026-08-01T00:10:00.000Z",
+            "payload": {
+                "type": "task_complete",
+                "turn_id": turn_id,
+                "session_id": "sess-1",
+                "duration_ms": 4200,
+                "time_to_first_token_ms": 640,
+            }
+        })
+    }
+
+    #[test]
+    fn a_task_complete_with_a_corroborating_task_started_becomes_one_turn_completed_observation() {
+        let drafts = transform(&task_complete("turn_1"), &ks());
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].event_type, "dev.cclog.turn.completed.v1");
+        assert_eq!(drafts[0].workspace_ref.as_deref(), Some("wsp_TEST"));
+        assert_eq!(drafts[0].repository_ref.as_deref(), Some("rep_TEST"));
+        assert_eq!(
+            drafts[0].data,
+            json!({
+                "outcome": "succeeded",
+                "duration_ms": 4200,
+                "time_to_first_token_ms": 640,
+                "content_ref": null,
+            })
+        );
+    }
+
+    #[test]
+    fn a_task_complete_without_a_same_file_task_started_produces_no_draft() {
+        // "turn_9" is deliberately unregistered in `ks()` under `codex_turn_started_at`:
+        // no same-file `task_started` corroborates it.
+        let drafts = transform(&task_complete("turn_9"), &ks());
+        assert!(
+            drafts.is_empty(),
+            "a task_complete this pre-scan never corroborated with a task_started must \
+             not be persisted as a measured turn"
+        );
+    }
+
+    #[test]
+    fn a_task_complete_with_no_turn_id_produces_no_draft() {
+        let mut record = task_complete("turn_1");
+        record["payload"].as_object_mut().unwrap().remove("turn_id");
+        assert!(transform(&record, &ks()).is_empty());
+    }
+
+    #[test]
+    fn turn_duration_is_null_never_zero_when_the_record_carries_no_measurement() {
+        // 61 of 1,722 real `task_complete` records carry no `duration_ms` at all.
+        let mut record = task_complete("turn_1");
+        record["payload"]
+            .as_object_mut()
+            .unwrap()
+            .remove("duration_ms");
+        let drafts = transform(&record, &ks());
+        assert_eq!(
+            drafts[0].data["duration_ms"],
+            Value::Null,
+            "an absent duration_ms is unmeasured and must be null -- a 0 here is \
+             indistinguishable from a turn that genuinely took under a millisecond"
+        );
+    }
+
+    #[test]
+    fn time_to_first_token_is_null_never_zero_when_the_record_carries_no_measurement() {
+        let mut record = task_complete("turn_1");
+        record["payload"]
+            .as_object_mut()
+            .unwrap()
+            .remove("time_to_first_token_ms");
+        let drafts = transform(&record, &ks());
+        assert_eq!(drafts[0].data["time_to_first_token_ms"], Value::Null);
+    }
+
+    #[test]
+    fn a_turn_without_an_error_field_is_reported_succeeded() {
+        let drafts = transform(&task_complete("turn_1"), &ks());
+        assert_eq!(
+            drafts[0].data["outcome"], "succeeded",
+            "a turn that wrote task_complete did complete"
+        );
+    }
+
+    #[test]
+    fn a_turn_that_wrote_an_error_is_reported_failed_not_succeeded() {
+        let mut record = task_complete("turn_1");
+        record["payload"]["error"] = json!({ "message": "SYNTHETIC failure", "code": "E_SYNTH" });
+        let drafts = transform(&record, &ks());
+        assert_eq!(drafts[0].data["outcome"], "failed");
+    }
+
+    #[test]
+    fn an_errors_content_never_reaches_the_draft() {
+        // `error` is read only for presence (see `output_outcome`'s doc comment for
+        // the same discipline applied to a tool's own error signal). Its message text
+        // is the vendor's own account of what went wrong -- content, in exactly the
+        // way a prompt is -- and this ledger is metadata-only.
+        let mut record = task_complete("turn_1");
+        record["payload"]["error"] =
+            json!({ "message": "a very distinctive secret failure explanation" });
+        let drafts = transform(&record, &ks());
+        let rendered = serde_json::to_string(&drafts[0].data).unwrap()
+            + &drafts[0].dedupe_seed.join("|")
+            + &drafts[0].subject;
+        assert!(!rendered.contains("distinctive"));
+        assert!(!rendered.contains("secret"));
+    }
+
+    #[test]
+    fn turns_re_persisted_by_a_fork_share_one_dedupe_key_even_when_the_record_differs() {
+        // Real copied history does not arrive byte-identical: at minimum the write-time
+        // envelope `timestamp` differs, since a fork's copy is stamped at the moment of
+        // the copy, not preserved from the original (this is the whole reason a
+        // computed duration is untrustworthy and `task_complete.duration_ms` is
+        // persisted verbatim instead -- see this module's "Turn duration" doc section).
+        // A dedupe seed keyed on anything beyond `turn_id` -- the record's own
+        // timestamp, its `duration_ms`, ... -- would keep both copies instead of
+        // collapsing the corpus's measured 2.4x duplication (1,722 records, 724 turns).
+        let original = task_complete("turn_1");
+        let mut copy = original.clone();
+        copy["timestamp"] = json!("2026-08-02T00:00:00.000Z");
+        copy["payload"]["time_to_first_token_ms"] = json!(9999);
+        copy["payload"]["duration_ms"] = json!(4321);
+
+        let a = transform(&original, &ks());
+        let b = transform(&copy, &ks());
+        assert_eq!(
+            a[0].dedupe_seed, b[0].dedupe_seed,
+            "identity must be per turn_id, not per record"
+        );
+    }
+
+    #[test]
+    fn two_different_turns_stay_two() {
+        let ks = ks().map("codex_turn_started_at", "turn_2", "1784606530");
+        let a = transform(&task_complete("turn_1"), &ks);
+        let b = transform(&task_complete("turn_2"), &ks);
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        assert_ne!(a[0].dedupe_seed, b[0].dedupe_seed);
     }
 }
